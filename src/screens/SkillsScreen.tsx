@@ -1,11 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   Alert,
 } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -16,65 +15,106 @@ import SearchIcon from "../assets/SearchIcon";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Skills">;
 
-const PROGRAMMING = [
-  "C#",
-  "Python",
-  "Docker",
-  "Git",
-  "MongoDB",
-  "C++",
-  "Java",
-  "MySQL",
-  "React",
-  "Django",
-];
-
-const DESIGN = ["UX/UI", "Photoshop", "Blender", "Figma"];
-
-const MANAGEMENT = ["Trello", "Miro", "Project management", "Notion"];
+type SkillRow = {
+  id: number;
+  name: string;
+  category: string;
+};
 
 export default function SkillsScreen({ navigation, route }: Props) {
   const { userId } = route.params;
 
-  const [selected, setSelected] = useState<string[]>([]);
+  const [skills, setSkills] = useState<SkillRow[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
 
   const normalized = query.trim().toLowerCase();
 
-  const filterItems = (items: string[]) => {
-    if (!normalized) return items;
-    return items.filter((x) => x.toLowerCase().includes(normalized));
+  const CATEGORY_TITLES: Record<string, string> = {
+    PROGRAMMING: 'ПРОГРАММИРОВАНИЕ',
+    DESIGN: 'ДИЗАЙН',
+    MANAGEMENT: 'МЕНЕДЖМЕНТ',
   };
 
   const groups = useMemo(() => {
-    const p = filterItems(PROGRAMMING);
-    const d = filterItems(DESIGN);
-    const m = filterItems(MANAGEMENT);
+    const grouped: Record<string, SkillRow[]> = {};
+    skills.forEach((s) => {
+      if (normalized && !s.name.toLowerCase().includes(normalized)) return;
+      if (!grouped[s.category]) grouped[s.category] = [];
+      grouped[s.category].push(s);
+    });
+    const result = Object.entries(grouped)
+      .sort(([a], [b]) => {
+        const order = ['PROGRAMMING', 'DESIGN', 'MANAGEMENT'];
+        return order.indexOf(a) - order.indexOf(b);
+      })
+      .map(([cat, items]) => ({
+        title: CATEGORY_TITLES[cat] || cat,
+        items,
+      }));
 
-    return [
-      { title: "ПРОГРАММИРОВАНИЕ", columns: 4 as const, items: p },
-      { title: "ДИЗАЙН", columns: 4 as const, items: d },
-      { title: "МЕНЕДЖМЕНТ", columns: 4 as const, items: m },
-    ].filter((g) => g.items.length > 0);
-  }, [normalized]);
+    // Add "МОИ" category if user has selected skills
+    if (selected.length > 0) {
+      const mySkills = skills.filter((s) => selected.includes(s.id));
+      if (mySkills.length > 0) {
+        result.unshift({
+          title: 'МОИ',
+          items: mySkills,
+        });
+      }
+    }
 
-  const toggle = (skill: string) => {
-    setSelected((prev) => (prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]));
+    return result;
+  }, [skills, normalized, selected]);
+
+  const toggle = (skillId: number) => {
+    setSelected((prev) => (prev.includes(skillId) ? prev.filter((id) => id !== skillId) : [...prev, skillId]));
   };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [{ data: skillsData, error: skillsError }, { data: userSkillsData, error: userSkillsError }] =
+          await Promise.all([
+            supabase.from("skills").select("id,name,category").order("name", { ascending: true }),
+            supabase.from("user_skills").select("skill_id").eq("user_id", userId),
+          ]);
+
+        if (skillsError) throw skillsError;
+        if (userSkillsError) throw userSkillsError;
+
+        if (!isMounted) return;
+
+        setSkills((skillsData ?? []) as SkillRow[]);
+        setSelected((userSkillsData ?? []).map((r: { skill_id: number }) => r.skill_id));
+      } catch (e) {
+        Alert.alert("Ошибка", e instanceof Error ? e.message : "Ошибка при загрузке навыков");
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, [userId]);
 
   const onSave = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .upsert({ 
-          id: userId, 
-          skills: selected,
-          updated_at: new Date().toISOString(),
-        });
+      const { error: deleteError } = await supabase.from("user_skills").delete().eq("user_id", userId);
+      if (deleteError) throw deleteError;
 
-      if (error) throw error;
+      if (selected.length > 0) {
+        const rows = selected.map((skillId) => ({ user_id: userId, skill_id: skillId }));
+        const { error: insertError } = await supabase.from("user_skills").insert(rows);
+        if (insertError) throw insertError;
+      }
 
       Alert.alert("Готово", "Навыки сохранены");
       navigation.replace("Profile");
@@ -85,21 +125,21 @@ export default function SkillsScreen({ navigation, route }: Props) {
     }
   };
 
-  const renderSkills = (items: string[]) => {
+  const renderSkills = (items: SkillRow[]) => {
     return (
       <View style={styles.skillsContainer}>
         {items.map((item) => {
-          const isSelected = selected.includes(item);
+          const isSelected = selected.includes(item.id);
           return (
             <TouchableOpacity
-              key={item}
-              onPress={() => toggle(item)}
+              key={item.id}
+              onPress={() => toggle(item.id)}
               accessibilityRole="button"
               accessibilityState={{ selected: isSelected }}
               style={[styles.skillBtn, isSelected ? styles.skillBtnSelected : null]}
             >
               <Text style={[styles.skillText, isSelected ? styles.skillTextSelected : null]} numberOfLines={1}>
-                {item}
+                {item.name}
               </Text>
             </TouchableOpacity>
           );
@@ -110,33 +150,31 @@ export default function SkillsScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.screen}>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={styles.titleWrap}>
-          <SkillsLogo width="92%" height={160} />
-        </View>
+      <View style={styles.titleWrap}>
+        <SkillsLogo width="92%" height={140} />
+      </View>
 
-        <Text style={styles.help}>ВЫБЕРИ НАВЫКИ, КОТОРЫМИ ТЫ ВЛАДЕЕШЬ</Text>
+      <Text style={styles.help}>ВЫБЕРИ НАВЫКИ, КОТОРЫМИ ТЫ ВЛАДЕЕШЬ</Text>
 
-        <View style={styles.searchWrap}>
-          <SearchIcon />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="поиск"
-            style={styles.search}
-            placeholderTextColor="#999"
-          />
-        </View>
+      <View style={styles.searchWrap}>
+        <SearchIcon />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="поиск"
+          style={styles.search}
+          placeholderTextColor="#999"
+        />
+      </View>
 
-        <View style={{ gap: 22, marginTop: 14 }}>
-          {groups.map((g) => (
-            <View key={g.title} style={{ gap: 10 }}>
-              <Text style={styles.groupTitle}>{g.title}</Text>
-              {renderSkills(g.items)}
-            </View>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={styles.groupsWrap}>
+        {groups.map((g) => (
+          <View key={g.title} style={styles.groupWrap}>
+            <Text style={styles.groupTitle}>{g.title}</Text>
+            {renderSkills(g.items)}
+          </View>
+        ))}
+      </View>
 
       <View style={styles.bottom}>
         <View style={styles.bottomRow}>
@@ -144,9 +182,7 @@ export default function SkillsScreen({ navigation, route }: Props) {
             <Text style={styles.secondaryText}>НАЗАД</Text>
           </TouchableOpacity>
           <TouchableOpacity disabled={loading} onPress={onSave} style={[styles.primaryBtn, loading && styles.disabled]}>
-            <Text style={styles.primaryText}>
-              {selected.length > 0 ? "ЗАВЕРШИТЬ" : "ПОКА НЕ ХОЧУ"}
-            </Text>
+            <Text style={styles.primaryText}>СОХРАНИТЬ</Text>
           </TouchableOpacity>
         </View>
 
@@ -170,15 +206,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 50,
   },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 24,
-  },
   titleWrap: {
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 10,
   },
   help: {
     textAlign: "center",
@@ -187,7 +217,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: "uppercase",
     color: "#000",
-    marginBottom: 14,
+    marginBottom: 10,
   },
   searchWrap: {
     borderWidth: 1,
@@ -210,18 +240,27 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: "#000",
   },
+  groupsWrap: {
+    flex: 1,
+    marginTop: 12,
+    gap: 14,
+    overflow: "hidden",
+  },
+  groupWrap: {
+    gap: 8,
+  },
   skillsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
   },
   skillBtn: {
-    height: 48,
+    height: 40,
     borderWidth: 1,
     borderColor: "#000",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     backgroundColor: "#fff",
   },
   skillBtnSelected: {

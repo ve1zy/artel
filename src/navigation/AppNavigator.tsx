@@ -1,6 +1,10 @@
 import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { useEffect } from "react";
+import * as Linking from "expo-linking";
+import { Alert } from "react-native";
+import { supabase } from "../lib/supabase";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterStep1Screen from "../screens/RegisterStep1Screen";
 import RegisterStep2Screen from "../screens/RegisterStep2Screen";
@@ -18,9 +22,45 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+const linking = {
+  prefixes: ["artelapp://"],
+  config: {
+    screens: {},
+  },
+};
+
 export default function AppNavigator() {
+  useEffect(() => {
+    const handleUrl = async (url: string) => {
+      const parsed = Linking.parse(url);
+      if (parsed.queryParams?.email && parsed.queryParams?.token && parsed.queryParams?.type === 'password_recovery') {
+        try {
+          const { error } = await supabase.auth.verifyOtp({
+            email: parsed.queryParams.email as string,
+            token: parsed.queryParams.token as string,
+            type: 'recovery',
+          });
+          if (error) throw error;
+          Alert.alert('Успешно', 'Пароль изменён');
+        } catch (e) {
+          Alert.alert('Ошибка', (e as Error).message);
+        }
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', ({ url }: { url: string }) => {
+      handleUrl(url);
+    });
+
+    Linking.getInitialURL().then((url: string | null) => {
+      if (url) handleUrl(url);
+    });
+
+    return () => subscription?.remove();
+  }, []);
+
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       <Stack.Navigator
         initialRouteName="Login"
         screenOptions={{

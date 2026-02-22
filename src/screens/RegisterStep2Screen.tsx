@@ -17,7 +17,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "RegisterStep2">;
 
 export default function RegisterStep2Screen({ navigation, route }: Props) {
   const { email } = route.params;
-  const [code, setCode] = useState<string[]>(["", "", "", "", "", ""]);
+  const [code, setCode] = useState<string[]>(["", "", "", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const inputs = useRef<Array<TextInput | null>>([]);
 
@@ -29,7 +29,7 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
     next[index] = digit;
     setCode(next);
 
-    if (digit && index < 5) inputs.current[index + 1]?.focus();
+    if (digit && index < code.length - 1) inputs.current[index + 1]?.focus();
   };
 
   const onBackspace = (index: number) => {
@@ -37,7 +37,7 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
   };
 
   const onNext = async () => {
-    if (codeValue.length < 6) {
+    if (codeValue.length < code.length) {
       Alert.alert("Ошибка", "Введите полный код");
       return;
     }
@@ -48,7 +48,7 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
       const { data, error } = await supabase.auth.verifyOtp({
         email,
         token: codeValue,
-        type: "magiclink", // Use magiclink for OTP sent via signInWithOtp
+        type: "email",
       });
 
       if (error) throw error;
@@ -149,13 +149,15 @@ const styles = StyleSheet.create({
   otpRow: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 12,
+    alignSelf: "stretch",
+    paddingHorizontal: 0,
+    columnGap: 6,
     marginTop: 14,
     marginBottom: 10,
   },
   otpBox: {
-    width: 48,
-    height: 48,
+    width: 36,
+    height: 42,
     borderWidth: 1,
     borderColor: "#000",
     textAlign: "center",

@@ -16,11 +16,18 @@ import { supabase } from "../lib/supabase";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 
+type SkillRow = {
+  id: number;
+  name: string;
+  category: string;
+};
+
 export default function ProfileScreen({ navigation }: Props) {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [userSkills, setUserSkills] = useState<SkillRow[]>([]);
 
   useEffect(() => {
     fetchUser();
@@ -31,6 +38,21 @@ export default function ProfileScreen({ navigation }: Props) {
     if (user) {
       setUser(user);
       setName(user.user_metadata?.full_name || "");
+      await fetchUserSkills(user.id);
+    }
+  };
+
+  const fetchUserSkills = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("user_skills")
+        .select("skills!inner(id, name, category)")
+        .eq("user_id", userId);
+
+      if (error) throw error;
+      setUserSkills((data ?? []).map((item: any) => item.skills));
+    } catch (e) {
+      console.error("Error fetching user skills:", e);
     }
   };
 
@@ -98,6 +120,29 @@ export default function ProfileScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>ПРОФИЛЬ</Text>
         <Text style={styles.email}>{user?.email}</Text>
+
+        <View style={styles.section}>
+          <View style={styles.skillsHeader}>
+            <Text style={styles.label}>НАВЫКИ</Text>
+            <TouchableOpacity
+              style={styles.editBtn}
+              onPress={() => navigation.navigate("Skills", { userId: user?.id })}
+            >
+              <Text style={styles.editText}>ИЗМЕНИТЬ</Text>
+            </TouchableOpacity>
+          </View>
+          {userSkills.length > 0 ? (
+            <View style={styles.skillsContainer}>
+              {userSkills.map((skill) => (
+                <View key={skill.id} style={styles.skillTag}>
+                  <Text style={styles.skillText}>{skill.name}</Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.noSkills}>Навыки не выбраны</Text>
+          )}
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.label}>ИМЯ</Text>
@@ -170,6 +215,47 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 24,
+  },
+  skillsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  editBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "#000",
+  },
+  editText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: "#000",
+  },
+  skillsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  skillTag: {
+    borderWidth: 1,
+    borderColor: "#000",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: "#f0f0f0",
+  },
+  skillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#000",
+  },
+  noSkills: {
+    fontSize: 14,
+    color: "#666",
+    fontStyle: "italic",
   },
   label: {
     fontSize: 11,
