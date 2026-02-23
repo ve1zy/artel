@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../lib/supabase";
@@ -12,44 +12,43 @@ export default function RegisterStep1Screen({ navigation }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", () => {
+      setStatus(null);
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const onNext = async () => {
-    console.log("onNext triggered");
+    setStatus(null);
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
     const trimmedPassword = password;
 
-    console.log("Values:", { trimmedName, trimmedEmail, trimmedPassword: "***" });
-
     if (!trimmedName) {
-      console.log("Validation failed: name");
-      Alert.alert("Ошибка", "Введи имя");
+      setStatus({ type: "error", message: "Введи имя" });
       return;
     }
 
     if (!trimmedEmail) {
-      console.log("Validation failed: email empty");
-      Alert.alert("Ошибка", "Введи почту");
+      setStatus({ type: "error", message: "Введи почту" });
       return;
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      console.log("Validation failed: email format");
-      Alert.alert("Ошибка", "Неверный email");
+      setStatus({ type: "error", message: "Неверный email" });
       return;
     }
 
     if (!trimmedPassword) {
-      console.log("Validation failed: password");
-      Alert.alert("Ошибка", "Введи пароль");
+      setStatus({ type: "error", message: "Введи пароль" });
       return;
     }
 
     setLoading(true);
-    console.log("DEBUG: Starting Supabase signUp process");
-    
     try {
-      console.log("DEBUG: Calling supabase.auth.signInWithOtp...");
       const { data, error } = await supabase.auth.signInWithOtp({
         email: trimmedEmail,
         options: {
@@ -59,21 +58,14 @@ export default function RegisterStep1Screen({ navigation }: Props) {
         },
       });
 
-      console.log("DEBUG: Supabase response received", { data: !!data, error: !!error });
-      if (error) {
-        console.error("DEBUG: Supabase signInWithOtp Error:", error);
-        throw error;
-      }
+      if (error) throw error;
 
-      console.log("DEBUG: OTP sent successfully");
-      Alert.alert("Код отправлен", "Проверь почту для получения кода входа");
+      setStatus({ type: "success", message: "Код отправлен. Проверь почту" });
       navigation.navigate("RegisterStep2", { email: trimmedEmail });
     } catch (e) {
-      console.error("DEBUG: Catch block error:", e);
-      Alert.alert("Ошибка", e instanceof Error ? e.message : "Ошибка при регистрации");
+      setStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при регистрации" });
     } finally {
       setLoading(false);
-      console.log("DEBUG: signUp process finished");
     }
   };
 
@@ -85,12 +77,23 @@ export default function RegisterStep1Screen({ navigation }: Props) {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <Text style={styles.label}>ИМЯ</Text>
-        <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="ВАСЯ" />
+        <TextInput
+          value={name}
+          onChangeText={(v) => {
+            setName(v);
+            if (status) setStatus(null);
+          }}
+          style={styles.input}
+          placeholder="ВАСЯ"
+        />
 
         <Text style={[styles.label, { marginTop: 16 }]}>ПОЧТА</Text>
         <TextInput
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(v) => {
+            setEmail(v);
+            if (status) setStatus(null);
+          }}
           keyboardType="email-address"
           autoCapitalize="none"
           style={styles.input}
@@ -98,7 +101,20 @@ export default function RegisterStep1Screen({ navigation }: Props) {
         />
 
         <Text style={[styles.label, { marginTop: 16 }]}>ПАРОЛЬ</Text>
-        <TextInput value={password} onChangeText={setPassword} secureTextEntry style={styles.input} placeholder="*******" />
+        <TextInput
+          value={password}
+          onChangeText={(v) => {
+            setPassword(v);
+            if (status) setStatus(null);
+          }}
+          secureTextEntry
+          style={styles.input}
+          placeholder="*******"
+        />
+
+        {status ? (
+          <Text style={[styles.status, status.type === "error" ? styles.statusError : styles.statusSuccess]}>{status.message}</Text>
+        ) : null}
       </ScrollView>
 
       <View style={styles.bottom}>
@@ -159,6 +175,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 14,
     color: "#000",
+  },
+  status: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  statusError: {
+    color: "#d00000",
+  },
+  statusSuccess: {
+    color: "#0a7a2f",
   },
   bottom: {
     paddingBottom: 24,

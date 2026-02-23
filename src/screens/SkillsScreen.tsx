@@ -5,7 +5,7 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
+  ScrollView,
 } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
@@ -28,6 +28,14 @@ export default function SkillsScreen({ navigation, route }: Props) {
   const [selected, setSelected] = useState<number[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", () => {
+      setStatus(null);
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const normalized = query.trim().toLowerCase();
 
@@ -77,6 +85,7 @@ export default function SkillsScreen({ navigation, route }: Props) {
 
     const load = async () => {
       setLoading(true);
+      setStatus(null);
       try {
         const [{ data: skillsData, error: skillsError }, { data: userSkillsData, error: userSkillsError }] =
           await Promise.all([
@@ -92,7 +101,7 @@ export default function SkillsScreen({ navigation, route }: Props) {
         setSkills((skillsData ?? []) as SkillRow[]);
         setSelected((userSkillsData ?? []).map((r: { skill_id: number }) => r.skill_id));
       } catch (e) {
-        Alert.alert("Ошибка", e instanceof Error ? e.message : "Ошибка при загрузке навыков");
+        setStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при загрузке навыков" });
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -106,6 +115,7 @@ export default function SkillsScreen({ navigation, route }: Props) {
 
   const onSave = async () => {
     setLoading(true);
+    setStatus(null);
     try {
       const { error: deleteError } = await supabase.from("user_skills").delete().eq("user_id", userId);
       if (deleteError) throw deleteError;
@@ -116,10 +126,10 @@ export default function SkillsScreen({ navigation, route }: Props) {
         if (insertError) throw insertError;
       }
 
-      Alert.alert("Готово", "Навыки сохранены");
-      navigation.replace("Profile");
+      setStatus({ type: "success", message: "Навыки сохранены" });
+      navigation.replace("Tabs", { screen: "Profile" } as any);
     } catch (e) {
-      Alert.alert("Ошибка", e instanceof Error ? e.message : "Ошибка при сохранении навыков");
+      setStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при сохранении навыков" });
     } finally {
       setLoading(false);
     }
@@ -167,14 +177,14 @@ export default function SkillsScreen({ navigation, route }: Props) {
         />
       </View>
 
-      <View style={styles.groupsWrap}>
+      <ScrollView style={styles.groupsWrap} contentContainerStyle={styles.groupsContent} showsVerticalScrollIndicator={false}>
         {groups.map((g) => (
           <View key={g.title} style={styles.groupWrap}>
             <Text style={styles.groupTitle}>{g.title}</Text>
             {renderSkills(g.items)}
           </View>
         ))}
-      </View>
+      </ScrollView>
 
       <View style={styles.bottom}>
         <View style={styles.bottomRow}>
@@ -185,6 +195,10 @@ export default function SkillsScreen({ navigation, route }: Props) {
             <Text style={styles.primaryText}>СОХРАНИТЬ</Text>
           </TouchableOpacity>
         </View>
+
+        {status ? (
+          <Text style={[styles.status, status.type === "error" ? styles.statusError : styles.statusSuccess]}>{status.message}</Text>
+        ) : null}
 
         <View style={styles.progressRow}>
           {[0, 1, 2].map((i) => (
@@ -244,7 +258,10 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: 12,
     gap: 14,
-    overflow: "hidden",
+  },
+  groupsContent: {
+    gap: 14,
+    paddingBottom: 10,
   },
   groupWrap: {
     gap: 8,
@@ -315,6 +332,18 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.6,
+  },
+  status: {
+    marginBottom: 10,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  statusError: {
+    color: "#d00000",
+  },
+  statusSuccess: {
+    color: "#0a7a2f",
   },
   progressRow: {
     flexDirection: "row",

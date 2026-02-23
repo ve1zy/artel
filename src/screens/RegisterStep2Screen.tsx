@@ -1,11 +1,10 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Keyboard,
 } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
@@ -19,7 +18,15 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
   const { email } = route.params;
   const [code, setCode] = useState<string[]>(["", "", "", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
   const inputs = useRef<Array<TextInput | null>>([]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", () => {
+      setStatus(null);
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const codeValue = useMemo(() => code.join(""), [code]);
 
@@ -29,7 +36,28 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
     next[index] = digit;
     setCode(next);
 
+    if (status) setStatus(null);
+
     if (digit && index < code.length - 1) inputs.current[index + 1]?.focus();
+  };
+
+  const onResend = async () => {
+    setStatus(null);
+    setCode(["", "", "", "", "", "", "", ""]);
+    inputs.current = [];
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+      });
+      if (error) throw error;
+      setStatus({ type: "success", message: "Код отправлен повторно" });
+    } catch (e) {
+      setStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при отправке кода" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onBackspace = (index: number) => {
@@ -37,8 +65,9 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
   };
 
   const onNext = async () => {
+    setStatus(null);
     if (codeValue.length < code.length) {
-      Alert.alert("Ошибка", "Введите полный код");
+      setStatus({ type: "error", message: "Введите полный код" });
       return;
     }
 
@@ -54,10 +83,11 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
       if (error) throw error;
 
       if (data.user) {
+        setStatus({ type: "success", message: "Код подтвержден" });
         navigation.navigate("Skills", { userId: data.user.id });
       }
     } catch (e) {
-      Alert.alert("Ошибка", e instanceof Error ? e.message : "Ошибка при проверке кода");
+      setStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при проверке кода" });
     } finally {
       setLoading(false);
     }
@@ -92,7 +122,11 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
           ))}
         </View>
 
-        <TouchableOpacity onPress={() => Alert.alert("TODO", "Повторная отправка") }>
+        {status ? (
+          <Text style={[styles.status, status.type === "error" ? styles.statusError : styles.statusSuccess]}>{status.message}</Text>
+        ) : null}
+
+        <TouchableOpacity onPress={onResend} disabled={loading}>
           <Text style={styles.resend}>ОТПРАВИТЬ КОД ЕЩЕ РАЗ</Text>
         </TouchableOpacity>
       </View>
@@ -172,6 +206,17 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: "#000",
     marginTop: 12,
+  },
+  status: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  statusError: {
+    color: "#d00000",
+  },
+  statusSuccess: {
+    color: "#0a7a2f",
   },
   bottomRow: {
     flexDirection: "row",

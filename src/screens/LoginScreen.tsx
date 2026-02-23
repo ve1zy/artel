@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import React, { useEffect, useState } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { supabase } from "../lib/supabase";
 import type { RootStackParamList } from "../navigation/AppNavigator";
@@ -11,10 +11,19 @@ export default function LoginScreen({ navigation }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", () => {
+      setStatus(null);
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const onLogin = async () => {
+    setStatus(null);
     if (!email.trim() || !password.trim()) {
-      Alert.alert("Ошибка", "Введите почту и пароль");
+      setStatus({ type: "error", message: "Введите почту и пароль" });
       return;
     }
 
@@ -28,31 +37,18 @@ export default function LoginScreen({ navigation }: Props) {
       if (error) throw error;
 
       if (data.user) {
-        navigation.replace("Profile");
+        setStatus({ type: "success", message: "Вход выполнен" });
+        navigation.replace("Tabs");
       }
     } catch (e) {
-      Alert.alert("Ошибка", e instanceof Error ? e.message : "Ошибка при входе");
+      setStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при входе" });
     } finally {
       setLoading(false);
     }
   };
 
-  const onForgotPassword = async () => {
-    if (!email.trim()) {
-      Alert.alert("Ошибка", "Введите почту для сброса пароля");
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
-      if (error) throw error;
-      Alert.alert("Успешно", "Инструкции по сбросу пароля отправлены на почту");
-    } catch (e) {
-      Alert.alert("Ошибка", e instanceof Error ? e.message : "Ошибка при сбросе пароля");
-    } finally {
-      setLoading(false);
-    }
+  const onForgotPassword = () => {
+    navigation.navigate("ForgotPassword");
   };
 
   return (
@@ -65,7 +61,10 @@ export default function LoginScreen({ navigation }: Props) {
         <Text style={styles.label}>ПОЧТА</Text>
         <TextInput
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(v) => {
+            setEmail(v);
+            if (status) setStatus(null);
+          }}
           keyboardType="email-address"
           autoCapitalize="none"
           style={styles.input}
@@ -73,7 +72,20 @@ export default function LoginScreen({ navigation }: Props) {
         />
 
         <Text style={[styles.label, { marginTop: 16 }]}>ПАРОЛЬ</Text>
-        <TextInput value={password} onChangeText={setPassword} secureTextEntry style={styles.input} placeholder="*******" />
+        <TextInput
+          value={password}
+          onChangeText={(v) => {
+            setPassword(v);
+            if (status) setStatus(null);
+          }}
+          secureTextEntry
+          style={styles.input}
+          placeholder="*******"
+        />
+
+        {status ? (
+          <Text style={[styles.status, status.type === "error" ? styles.statusError : styles.statusSuccess]}>{status.message}</Text>
+        ) : null}
 
         <TouchableOpacity disabled={loading} onPress={onLogin} style={[styles.primaryBtn, loading && styles.disabled]}>
           <Text style={styles.primaryBtnText}>ВОЙТИ</Text>
@@ -120,6 +132,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 14,
     color: "#000",
+  },
+  status: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  statusError: {
+    color: "#d00000",
+  },
+  statusSuccess: {
+    color: "#0a7a2f",
   },
   primaryBtn: {
     height: 56,
