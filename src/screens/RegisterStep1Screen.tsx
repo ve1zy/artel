@@ -70,8 +70,8 @@ export default function RegisterStep1Screen({ navigation }: Props) {
         return;
       }
 
-      setStatus({ type: "success", message: "Аккаунт создан. Подтверди почту и войди" });
-      navigation.replace("Login");
+      setStatus({ type: "success", message: "Код отправлен. Проверь почту" });
+      navigation.navigate("RegisterStep2", { email: trimmedEmail, password: trimmedPassword });
     } catch (e) {
       setStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при регистрации" });
     } finally {

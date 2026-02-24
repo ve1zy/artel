@@ -74,20 +74,33 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
     Keyboard.dismiss();
     setLoading(true);
     try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        email,
-        token: codeValue,
-        type: "email",
-      });
+      const attemptVerify = async (type: "signup" | "email") => {
+        return supabase.auth.verifyOtp({
+          email,
+          token: codeValue,
+          type,
+        });
+      };
+
+      let { data, error } = await attemptVerify("signup");
+      if (error) {
+        const fallback = await attemptVerify("email");
+        data = fallback.data;
+        error = fallback.error;
+      }
 
       if (error) throw error;
 
       if (data.user) {
         setStatus({ type: "success", message: "Код подтвержден" });
 
-        if (typeof password === "string" && password.length >= 6) {
-          const { error: passError } = await supabase.auth.updateUser({ password });
-          if (passError) throw passError;
+        if (typeof password === "string" && password) {
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+          if (signInError) throw signInError;
+          if (!signInData.session) throw new Error("Не удалось создать сессию");
         }
 
         const displayName = (data.user.user_metadata as any)?.full_name;

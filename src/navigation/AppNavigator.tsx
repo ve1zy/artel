@@ -21,7 +21,7 @@ import TabProfileIcon from "../assets/TabProfileIcon";
 export type RootStackParamList = {
   Login: undefined;
   RegisterStep1: undefined;
-  RegisterStep2: { email: string; password: string };
+  RegisterStep2: { email: string; password?: string };
   ForgotPassword: undefined;
   ResetPassword: { email: string };
   Skills: { userId: string };
