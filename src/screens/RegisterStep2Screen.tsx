@@ -15,7 +15,7 @@ import RegistrationLogo from "../assets/RegistrationLogo";
 type Props = NativeStackScreenProps<RootStackParamList, "RegisterStep2">;
 
 export default function RegisterStep2Screen({ navigation, route }: Props) {
-  const { email } = route.params;
+  const { email, password } = route.params as any;
   const [code, setCode] = useState<string[]>(["", "", "", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
@@ -84,6 +84,18 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
 
       if (data.user) {
         setStatus({ type: "success", message: "Код подтвержден" });
+
+        if (typeof password === "string" && password.length >= 6) {
+          const { error: passError } = await supabase.auth.updateUser({ password });
+          if (passError) throw passError;
+        }
+
+        const displayName = (data.user.user_metadata as any)?.full_name;
+        if (typeof displayName === "string" && displayName.trim()) {
+          await supabase
+            .from("profiles")
+            .upsert({ id: data.user.id, full_name: displayName.trim(), updated_at: new Date().toISOString() });
+        }
         navigation.navigate("Skills", { userId: data.user.id });
       }
     } catch (e) {
@@ -115,6 +127,8 @@ export default function RegisterStep2Screen({ navigation, route }: Props) {
               keyboardType="number-pad"
               maxLength={1}
               style={styles.otpBox}
+              placeholder="-"
+              placeholderTextColor="#8A8A8A"
               onKeyPress={({ nativeEvent }) => {
                 if (nativeEvent.key === "Backspace") onBackspace(i);
               }}

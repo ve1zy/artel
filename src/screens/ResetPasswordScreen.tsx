@@ -9,6 +9,7 @@ import {
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import { supabase } from "../lib/supabase";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ResetPassword">;
 
@@ -17,12 +18,16 @@ export default function ResetPasswordScreen({ navigation, route }: Props) {
 
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [password2Visible, setPassword2Visible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener("focus", () => {
       setStatus(null);
+      setPasswordVisible(false);
+      setPassword2Visible(false);
     });
     return unsubscribe;
   }, [navigation]);
@@ -62,28 +67,48 @@ export default function ResetPasswordScreen({ navigation, route }: Props) {
       <Text style={styles.subtitle}>{email}</Text>
 
       <Text style={styles.label}>ПАРОЛЬ</Text>
-      <TextInput
-        value={password}
-        onChangeText={(v) => {
-          setPassword(v);
-          if (status) setStatus(null);
-        }}
-        secureTextEntry
-        style={styles.input}
-        placeholder="Пароль"
-      />
+      <View style={styles.inputWrap}>
+        <TextInput
+          value={password}
+          onChangeText={(v) => {
+            setPassword(v);
+            if (status) setStatus(null);
+          }}
+          secureTextEntry={!passwordVisible}
+          style={[styles.input, styles.inputWithIcon]}
+          placeholder="Пароль"
+          placeholderTextColor="#8A8A8A"
+        />
+        <TouchableOpacity
+          onPress={() => setPasswordVisible((v) => !v)}
+          style={styles.eyeBtn}
+          disabled={loading}
+        >
+          <Ionicons name={passwordVisible ? "eye-off" : "eye"} size={20} color="#000" />
+        </TouchableOpacity>
+      </View>
 
       <Text style={[styles.label, { marginTop: 16 }]}>ПОВТОРИ ПАРОЛЬ</Text>
-      <TextInput
-        value={password2}
-        onChangeText={(v) => {
-          setPassword2(v);
-          if (status) setStatus(null);
-        }}
-        secureTextEntry
-        style={styles.input}
-        placeholder="Повтори пароль"
-      />
+      <View style={styles.inputWrap}>
+        <TextInput
+          value={password2}
+          onChangeText={(v) => {
+            setPassword2(v);
+            if (status) setStatus(null);
+          }}
+          secureTextEntry={!password2Visible}
+          style={[styles.input, styles.inputWithIcon]}
+          placeholder="Повтори пароль"
+          placeholderTextColor="#8A8A8A"
+        />
+        <TouchableOpacity
+          onPress={() => setPassword2Visible((v) => !v)}
+          style={styles.eyeBtn}
+          disabled={loading}
+        >
+          <Ionicons name={password2Visible ? "eye-off" : "eye"} size={20} color="#000" />
+        </TouchableOpacity>
+      </View>
 
       {status ? (
         <Text style={[styles.status, status.type === "error" ? styles.statusError : styles.statusSuccess]}>{status.message}</Text>
@@ -144,6 +169,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 14,
     color: "#000",
+  },
+  inputWrap: {
+    position: "relative",
+  },
+  inputWithIcon: {
+    paddingRight: 86,
+  },
+  eyeBtn: {
+    position: "absolute",
+    right: 12,
+    top: 0,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
   },
   status: {
     marginTop: 10,

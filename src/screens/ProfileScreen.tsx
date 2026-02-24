@@ -10,7 +10,9 @@ import {
   Platform,
   Image,
   Modal,
+  Switch,
 } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as FileSystemLegacy from "expo-file-system/legacy";
@@ -26,7 +28,12 @@ type SkillRow = {
 export default function ProfileScreen({ navigation }: any) {
   const [name, setName] = useState("");
   const [newName, setNewName] = useState("");
+  const [bio, setBio] = useState("");
+  const [newBio, setNewBio] = useState("");
+  const [wantInProject, setWantInProject] = useState(false);
+  const [roles, setRoles] = useState<string[]>([]);
   const [password, setPassword] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -36,6 +43,9 @@ export default function ProfileScreen({ navigation }: any) {
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
   const [userSkills, setUserSkills] = useState<SkillRow[]>([]);
   const [nameStatus, setNameStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
+  const [bioStatus, setBioStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
+  const [wantStatus, setWantStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
+  const [roleStatus, setRoleStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
   const [passwordStatus, setPasswordStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
   const [signOutStatus, setSignOutStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
   const [avatarStatus, setAvatarStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
@@ -68,6 +78,66 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
+  const ROLE_OPTIONS: Array<{ key: string; title: string }> = [
+    { key: "frontend", title: "FRONTEND" },
+    { key: "backend", title: "BACKEND" },
+    { key: "devops", title: "DEVOPS" },
+    { key: "ml", title: "ML" },
+    { key: "design", title: "DESIGN" },
+    { key: "manager", title: "MANAGER" },
+    { key: "android", title: "ANDROID" },
+    { key: "ios", title: "IOS" },
+    { key: "crossplatform", title: "CROSSPLATFORM" },
+  ];
+
+  const onToggleRole = async (roleKey: string) => {
+    setRoleStatus(null);
+    if (!user?.id) {
+      setRoleStatus({ type: "error", message: "Профиль еще загружается" });
+      return;
+    }
+
+    const nextRoles = roles.includes(roleKey) ? roles.filter((r) => r !== roleKey) : [...roles, roleKey];
+    setRoles(nextRoles);
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .upsert({ id: user.id, roles: nextRoles, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      setRoleStatus({ type: "success", message: "Сохранено" });
+    } catch (e) {
+      setRoleStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при обновлении" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onUpdateBio = async () => {
+    setBioStatus(null);
+    if (!user?.id) {
+      setBioStatus({ type: "error", message: "Профиль еще загружается" });
+      return;
+    }
+
+    const trimmed = newBio.trim();
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .upsert({ id: user.id, bio: trimmed, updated_at: new Date().toISOString() });
+      if (error) throw error;
+
+      setBio(trimmed);
+      setBioStatus({ type: "success", message: "Сохранено" });
+    } catch (e) {
+      setBioStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при обновлении" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const createSmallAvatarDataUriFromLocalImage = async (uri: string) => {
     const result = await ImageManipulator.manipulateAsync(
       uri,
@@ -85,10 +155,14 @@ export default function ProfileScreen({ navigation }: any) {
   useEffect(() => {
     const unsubscribe = navigation.addListener("focus", () => {
       setNameStatus(null);
+      setBioStatus(null);
+      setWantStatus(null);
+      setRoleStatus(null);
       setPasswordStatus(null);
       setSignOutStatus(null);
       setAvatarStatus(null);
       setSkillsStatus(null);
+      setPasswordVisible(false);
       fetchUser();
     });
     return unsubscribe;
@@ -106,7 +180,7 @@ export default function ProfileScreen({ navigation }: any) {
       try {
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
-          .select("avatar_path, updated_at")
+          .select("avatar_path, updated_at, bio, want_in_project, roles")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -114,12 +188,22 @@ export default function ProfileScreen({ navigation }: any) {
 
         const avatarPath = profileData?.avatar_path as string | null | undefined;
         const updatedAt = (profileData as any)?.updated_at as string | null | undefined;
+        const dbBio = (profileData as any)?.bio as string | null | undefined;
+        const dbWant = (profileData as any)?.want_in_project as boolean | null | undefined;
+        const dbRoles = (profileData as any)?.roles as string[] | null | undefined;
+        if (typeof dbBio === "string") {
+          setBio(dbBio);
+          if (!newBio) setNewBio(dbBio);
+        }
+        if (typeof dbWant === "boolean") setWantInProject(dbWant);
+        if (Array.isArray(dbRoles)) setRoles(dbRoles.filter((v) => typeof v === "string"));
         if (avatarPath) {
           const v = updatedAt ? Date.parse(updatedAt) : Date.now();
           setAvatarPath(avatarPath);
           if (avatarCacheKey !== v) {
             setAvatarCacheKey(v);
-            await downloadAvatarToCache(avatarPath, v);
+            const { data } = supabase.storage.from("avatars").getPublicUrl(avatarPath);
+            if (data?.publicUrl) setAvatarUrl(data.publicUrl);
           }
         }
       } catch {
@@ -128,35 +212,26 @@ export default function ProfileScreen({ navigation }: any) {
     }
   };
 
-  const downloadAvatarToCache = async (path: string, cacheKey: number) => {
-    if (!user?.id) return;
-    setAvatarLoading(true);
+  const onToggleWantInProject = async (next: boolean) => {
+    setWantStatus(null);
+    if (!user?.id) {
+      setWantStatus({ type: "error", message: "Профиль еще загружается" });
+      return;
+    }
+
+    setWantInProject(next);
+    setLoading(true);
     try {
-      const { data, error } = await supabase.storage.from("avatars").download(path);
+      const { error } = await supabase
+        .from("profiles")
+        .upsert({ id: user.id, want_in_project: next, updated_at: new Date().toISOString() });
       if (error) throw error;
-
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const res = reader.result;
-          if (typeof res !== "string") return reject(new Error("Invalid FileReader result"));
-          const comma = res.indexOf(",");
-          resolve(comma >= 0 ? res.slice(comma + 1) : res);
-        };
-        reader.onerror = () => reject(new Error("FileReader error"));
-        reader.readAsDataURL(data);
-      });
-
-      const dataUri = `data:image/jpeg;base64,${base64}`;
-      setAvatarUrl(dataUri);
-      await Promise.all([
-        AsyncStorage.setItem(getAvatarCacheStorageKey(user.id), dataUri),
-        AsyncStorage.setItem(getAvatarCacheVersionKey(user.id), String(cacheKey)),
-      ]);
+      setWantStatus({ type: "success", message: "Сохранено" });
     } catch (e) {
-      setAvatarStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка аватара" });
+      setWantInProject((prev) => !prev);
+      setWantStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при обновлении" });
     } finally {
-      setAvatarLoading(false);
+      setLoading(false);
     }
   };
 
@@ -290,7 +365,14 @@ export default function ProfileScreen({ navigation }: any) {
       setAvatarPath(filePath);
       const v = Date.now();
       setAvatarCacheKey(v);
-      await downloadAvatarToCache(filePath, v);
+      const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      if (data?.publicUrl) {
+        setAvatarUrl(data.publicUrl);
+        await Promise.all([
+          AsyncStorage.setItem(getAvatarCacheStorageKey(user.id), data.publicUrl),
+          AsyncStorage.setItem(getAvatarCacheVersionKey(user.id), String(v)),
+        ]);
+      }
 
       if (prevAvatarPath && prevAvatarPath !== filePath) {
         await supabase.storage.from("avatars").remove([prevAvatarPath]);
@@ -452,6 +534,7 @@ export default function ProfileScreen({ navigation }: any) {
         ) : null}
 
         <Text style={styles.headerName}>{name || "—"}</Text>
+        <Text style={styles.headerRole}>{roles.length ? roles.map((r) => r.toUpperCase()).join(" · ") : "—"}</Text>
         <Text style={styles.email}>{user?.email}</Text>
 
         <View style={styles.headerSkills}>
@@ -473,6 +556,68 @@ export default function ProfileScreen({ navigation }: any) {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.label}>ХОЧУ В ПРОЕКТ</Text>
+          <View style={styles.switchRow}>
+            <Text style={styles.switchValue}>{wantInProject ? "ВКЛ" : "ВЫКЛ"}</Text>
+            <Switch
+              value={wantInProject}
+              onValueChange={onToggleWantInProject}
+              disabled={loading}
+            />
+          </View>
+
+          {wantStatus ? (
+            <Text style={[styles.status, wantStatus.type === "error" ? styles.statusError : styles.statusSuccess]}>{wantStatus.message}</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>РОЛЬ</Text>
+          <View style={styles.roleWrap}>
+            {ROLE_OPTIONS.map((opt) => {
+              const selected = roles.includes(opt.key);
+              return (
+                <TouchableOpacity
+                  key={opt.key}
+                  onPress={() => onToggleRole(opt.key)}
+                  disabled={loading}
+                  style={[styles.roleBtn, selected ? styles.roleBtnSelected : null]}
+                >
+                  <Text style={[styles.roleText, selected ? styles.roleTextSelected : null]}>{opt.title}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {roleStatus ? (
+            <Text style={[styles.status, roleStatus.type === "error" ? styles.statusError : styles.statusSuccess]}>{roleStatus.message}</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.label}>О СЕБЕ</Text>
+          <TextInput
+            style={[styles.input, { height: 64, textAlignVertical: "top" }]}
+            value={newBio}
+            onChangeText={(v) => {
+              setNewBio(v);
+              if (bioStatus) setBioStatus(null);
+            }}
+            placeholder="Расскажи о себе"
+            placeholderTextColor="#8A8A8A"
+            multiline
+          />
+
+          {bioStatus ? (
+            <Text style={[styles.status, bioStatus.type === "error" ? styles.statusError : styles.statusSuccess]}>{bioStatus.message}</Text>
+          ) : null}
+
+          <TouchableOpacity style={styles.primaryBtn} onPress={onUpdateBio} disabled={loading}>
+            <Text style={styles.primaryText}>СОХРАНИТЬ</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.label}>ИМЯ</Text>
           <TextInput
             style={styles.input}
@@ -482,6 +627,7 @@ export default function ProfileScreen({ navigation }: any) {
               if (nameStatus) setNameStatus(null);
             }}
             placeholder="Ваше имя"
+            placeholderTextColor="#8A8A8A"
           />
           {nameStatus ? (
             <Text style={[styles.status, nameStatus.type === "error" ? styles.statusError : styles.statusSuccess]}>{nameStatus.message}</Text>
@@ -511,16 +657,26 @@ export default function ProfileScreen({ navigation }: any) {
 
         <View style={styles.section}>
           <Text style={styles.label}>НОВЫЙ ПАРОЛЬ</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={(v) => {
-              setPassword(v);
-              if (passwordStatus) setPasswordStatus(null);
-            }}
-            secureTextEntry
-            placeholder="*******"
-          />
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={[styles.input, styles.inputWithIcon]}
+              value={password}
+              onChangeText={(v) => {
+                setPassword(v);
+                if (passwordStatus) setPasswordStatus(null);
+              }}
+              secureTextEntry={!passwordVisible}
+              placeholder="*******"
+              placeholderTextColor="#8A8A8A"
+            />
+            <TouchableOpacity
+              onPress={() => setPasswordVisible((v) => !v)}
+              style={styles.eyeBtn}
+              disabled={loading}
+            >
+              <Ionicons name={passwordVisible ? "eye-off" : "eye"} size={20} color="#000" />
+            </TouchableOpacity>
+          </View>
           {passwordStatus ? (
             <Text style={[styles.status, passwordStatus.type === "error" ? styles.statusError : styles.statusSuccess]}>{passwordStatus.message}</Text>
           ) : null}
@@ -620,6 +776,15 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 6,
   },
+  headerRole: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 2,
+    color: "#000",
+    textTransform: "uppercase",
+    textAlign: "center",
+    marginBottom: 6,
+  },
   email: {
     fontSize: 14,
     color: "#666",
@@ -652,6 +817,50 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: "uppercase",
     color: "#000",
+  },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    height: 48,
+    borderWidth: 1,
+    borderColor: "#000",
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  switchValue: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 2,
+    color: "#000",
+  },
+  roleWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  roleBtn: {
+    height: 40,
+    borderWidth: 1,
+    borderColor: "#000",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    backgroundColor: "#fff",
+  },
+  roleBtnSelected: {
+    backgroundColor: "#000",
+  },
+  roleText: {
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: "#000",
+  },
+  roleTextSelected: {
+    color: "#fff",
   },
   skillsContainer: {
     flexDirection: "row",
@@ -702,8 +911,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#000",
     paddingHorizontal: 12,
-    marginBottom: 12,
     fontSize: 14,
+    color: "#000",
+  },
+  inputWrap: {
+    position: "relative",
+  },
+  inputWithIcon: {
+    paddingRight: 86,
+  },
+  eyeBtn: {
+    position: "absolute",
+    right: 12,
+    top: 0,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bioInput: {
+    height: 64,
+    textAlignVertical: "top",
+    paddingTop: 12,
   },
   status: {
     marginTop: -4,
@@ -722,6 +950,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#000",
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 12,
   },
   primaryText: {
     color: "#fff",

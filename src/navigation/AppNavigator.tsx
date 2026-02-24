@@ -11,15 +11,17 @@ import ProfileScreen from "../screens/ProfileScreen";
 import ForgotPasswordScreen from "../screens/ForgotPasswordScreen";
 import ResetPasswordScreen from "../screens/ResetPasswordScreen";
 import ProjectsScreen from "../screens/ProjectsScreen";
+import FormsScreen from "../screens/FormsScreen";
 import ChatsScreen from "../screens/ChatsScreen";
 import TabProjectsIcon from "../assets/TabProjectsIcon";
+import TabFormsIcon from "../assets/TabFormsIcon";
 import TabChatsIcon from "../assets/TabChatsIcon";
 import TabProfileIcon from "../assets/TabProfileIcon";
 
 export type RootStackParamList = {
   Login: undefined;
   RegisterStep1: undefined;
-  RegisterStep2: { email: string };
+  RegisterStep2: { email: string; password: string };
   ForgotPassword: undefined;
   ResetPassword: { email: string };
   Skills: { userId: string };
@@ -30,6 +32,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 type BottomTabParamList = {
   Projects: undefined;
+  Forms: undefined;
   Chats: undefined;
   Profile: undefined;
 };
@@ -70,6 +73,14 @@ function TabsNavigator() {
         }}
       />
       <Tab.Screen
+        name="Forms"
+        component={FormsScreen}
+        options={{
+          title: "АНКЕТЫ",
+          tabBarIcon: ({ color }) => <TabFormsIcon color={color} />,
+        }}
+      />
+      <Tab.Screen
         name="Chats"
         component={ChatsScreen}
         options={{
@@ -93,18 +104,32 @@ export default function AppNavigator() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [isAuthed, setIsAuthed] = useState(false);
 
+  const ensureProfileRow = async (user: any) => {
+    if (!user?.id) return;
+    const fullName = (user.user_metadata as any)?.full_name;
+    await supabase
+      .from("profiles")
+      .upsert({
+        id: user.id,
+        full_name: typeof fullName === "string" && fullName.trim() ? fullName.trim() : null,
+        updated_at: new Date().toISOString(),
+      });
+  };
+
   useEffect(() => {
     let isMounted = true;
 
     supabase.auth.getSession().then(({ data }) => {
       if (!isMounted) return;
       setIsAuthed(!!data.session);
+      if (data.session?.user) ensureProfileRow(data.session.user);
       setCheckingSession(false);
     });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!isMounted) return;
       setIsAuthed(!!session);
+      if (session?.user) ensureProfileRow(session.user);
     });
 
     return () => {
@@ -134,6 +159,7 @@ export default function AppNavigator() {
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="RegisterStep1" component={RegisterStep1Screen} />
             <Stack.Screen name="RegisterStep2" component={RegisterStep2Screen} />
+            <Stack.Screen name="Skills" component={SkillsScreen} />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
             <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
           </>

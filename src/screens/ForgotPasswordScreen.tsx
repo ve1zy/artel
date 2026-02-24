@@ -132,6 +132,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
               autoCapitalize="none"
               style={styles.input}
               placeholder="Email"
+              placeholderTextColor="#8A8A8A"
             />
 
             {status ? (
@@ -156,6 +157,7 @@ export default function ForgotPasswordScreen({ navigation }: Props) {
                   maxLength={1}
                   style={styles.otpBox}
                   placeholder="-"
+                  placeholderTextColor="#8A8A8A"
                   onKeyPress={({ nativeEvent }) => {
                     if (nativeEvent.key === "Backspace") onBackspace(i);
                   }}
