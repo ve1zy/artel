@@ -3,6 +3,7 @@ import { View, StyleSheet, Text, ScrollView, Image, ActivityIndicator, Touchable
 import { supabase } from "../lib/supabase";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import * as Linking from "expo-linking";
+import { useNavigation } from "@react-navigation/native";
 
 type ProfileRow = {
   id: string;
@@ -48,10 +49,12 @@ const renderBio = (text: string) => {
 };
 
 export default function FormsScreen() {
+  const navigation = useNavigation<any>();
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
   const [items, setItems] = useState<ProfileRow[]>([]);
   const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [sentInvitations, setSentInvitations] = useState<{ [toUserId: string]: { invited?: boolean; chat?: boolean } }>({});
   const [rolesFilter, setRolesFilter] = useState<string[]>([]);
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [skillsFilter, setSkillsFilter] = useState<number[]>([]);
@@ -88,6 +91,26 @@ export default function FormsScreen() {
   const onInvite = async (toUserId: string) => {
     if (!myUserId) return;
     try {
+      // Check if chat already exists
+      const { data: existingChat } = await supabase
+        .from('chats')
+        .select('id')
+        .contains('participants', [myUserId, toUserId]);
+      if (existingChat && existingChat.length > 0) {
+        alert('У вас уже есть чат');
+        return;
+      }
+      // Check if already sent pending invitation
+      const { data: existing } = await supabase
+        .from('invitations')
+        .select('id')
+        .eq('from_user', myUserId)
+        .eq('to_user', toUserId)
+        .eq('status', 'pending');
+      if (existing && existing.length > 0) {
+        alert('Приглашение уже отправлено');
+        return;
+      }
       const { error } = await supabase.from('invitations').insert({
         from_user: myUserId,
         to_user: toUserId,
@@ -95,6 +118,7 @@ export default function FormsScreen() {
       });
       if (error) throw error;
       alert('Приглашение отправлено');
+      setSentInvitations(prev => ({ ...prev, [toUserId]: { invited: true, chat: prev[toUserId]?.chat ?? false } }));
     } catch (e) {
       alert('Ошибка отправки приглашения');
     }
@@ -111,38 +135,106 @@ export default function FormsScreen() {
     }
   };
 
+  const loadSentInvitations = async (userId: string) => {
+    console.log("loadSentInvitations: loading for", userId);
+    const { data, error } = await supabase
+      .from("invitations")
+      .select("to_user")
+      .eq("from_user", userId)
+      .eq("status", "pending");
+    console.log("loadSentInvitations: data", data, "error", error);
+    if (error) {
+      console.error(error);
+      return;
+    }
+    const sent =
+      data?.reduce(
+        (acc: { [toUserId: string]: { invited?: boolean; chat?: boolean } }, inv: any) => ({
+          ...acc,
+          [inv.to_user]: { invited: true },
+        }),
+        {}
+      ) || {};
+    setSentInvitations((prev) => {
+      const next: { [toUserId: string]: { invited?: boolean; chat?: boolean } } = { ...prev };
+      // Clear invited status for users not in pending list
+      Object.keys(next).forEach((key) => {
+        if (!data?.find((inv: any) => inv.to_user === key)) {
+          delete next[key].invited;
+          // If no chat either, remove the entry entirely
+          if (!next[key].chat) {
+            delete next[key];
+          }
+        }
+      });
+      // Add invited status for pending invitations
+      (data ?? []).forEach((inv: any) => {
+        next[inv.to_user] = { ...next[inv.to_user], invited: true };
+      });
+      return next;
+    });
+  };
+
+  const loadChatsForSent = async (userId: string) => {
+    const { data, error } = await supabase
+      .from("chats")
+      .select("participants")
+      .contains("participants", [userId]);
+    if (error) {
+      console.error(error);
+      return;
+    }
+    setSentInvitations((prev) => {
+      const next: { [toUserId: string]: { invited?: boolean; chat?: boolean } } = {};
+      // Copy existing invited statuses
+      Object.entries(prev).forEach(([key, val]) => {
+        if (val.invited) {
+          next[key] = { invited: true };
+        }
+      });
+      // Add chat statuses from current data
+      (data ?? []).forEach((chat: any) => {
+        const other = (chat.participants ?? []).find((p: string) => p !== userId);
+        if (other) {
+          next[other] = { ...next[other], chat: true };
+        }
+      });
+      return next;
+    });
+  };
+
   const load = async () => {
     setLoading(true);
     setStatus(null);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const uid = userData?.user?.id ?? null;
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session?.user) throw new Error("Not authenticated");
+      const uid = session.session.user.id;
       setMyUserId(uid);
-
-      const { data, error } = await supabase
+      await loadSkills();
+      const { data: profilesData, error } = await supabase
         .from("profiles")
-        .select("id, full_name, bio, avatar_path, updated_at, want_in_project, roles")
+        .select("*")
+        .neq("id", uid)
         .eq("want_in_project", true)
-        .neq("id", uid ?? "")
         .order("updated_at", { ascending: false });
-
       if (error) throw error;
-
-      const rows = (data ?? []) as ProfileRow[];
-      setItems(rows);
-
-      const userIds = rows.map((r) => r.id);
-      const { data: usData, error: usError } = await supabase
+      const profiles = (profilesData ?? []) as ProfileRow[];
+      const { data: userSkillsData, error: usError } = await supabase
         .from("user_skills")
-        .select("user_id, skill_id")
-        .in("user_id", userIds);
+        .select("user_id, skill_id");
       if (usError) throw usError;
-      const map: Record<string, number[]> = {};
-      (usData ?? []).forEach((r: any) => {
-        if (!map[r.user_id]) map[r.user_id] = [];
-        map[r.user_id].push(r.skill_id);
+      const skillMap: Record<string, number[]> = {};
+      (userSkillsData ?? []).forEach((us: any) => {
+        skillMap[us.user_id] = skillMap[us.user_id] || [];
+        skillMap[us.user_id].push(us.skill_id);
       });
-      setSkillIdsByUser(map);
+      setSkillIdsByUser(skillMap);
+      setItems(profiles);
+      setLoading(false);
+      setStatus(null);
+      await loadSentInvitations(uid);
+      await loadChatsForSent(uid);
     } catch (e) {
       setItems([]);
       const msg =
@@ -162,6 +254,42 @@ export default function FormsScreen() {
     loadSkills();
     load();
   }, []);
+
+  useEffect(() => {
+    if (myUserId) {
+      const subInv = supabase
+        .channel('sent_invitations')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'invitations', filter: `from_user=eq.${myUserId}` }, (payload) => {
+          console.log('sent invitation change:', payload);
+          const newInv = payload.new as any;
+          const oldInv = payload.old as any;
+          
+          // Reload sent invitations list
+          loadSentInvitations(myUserId);
+          
+          // If invitation was accepted, reload chats to show "ЧАТ" button
+          if (newInv?.status === 'accepted') {
+            console.log('Invitation accepted, reloading chats for inviter');
+            loadChatsForSent(myUserId);
+          }
+        })
+        .subscribe();
+
+      const subChat = supabase
+        .channel('my_chats')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'chats' }, (payload) => {
+          console.log('my chat change:', payload);
+          // Reload chats on any change to catch new/updated/deleted chats
+          loadChatsForSent(myUserId);
+        })
+        .subscribe();
+
+      return () => {
+        subInv.unsubscribe();
+        subChat.unsubscribe();
+      };
+    }
+  }, [myUserId]);
 
   useEffect(() => {
     load();
@@ -260,6 +388,23 @@ export default function FormsScreen() {
             const userSkillIds = skillIdsByUser[p.id] ?? [];
             const userSkills = userSkillIds.map(id => skills.find(s => s.id === id)?.name).filter(Boolean).join(", ");
 
+            let buttonText = "ПРИГЛАСИТЬ";
+            let onPress = () => { onInvite(p.id); };
+            let disabled = false;
+            const status = sentInvitations[p.id];
+            if (status?.chat) {
+              buttonText = "ЧАТ";
+              onPress = () => {
+                console.log('Opening chat with user:', p.id);
+                navigation.navigate("Tabs", { screen: "Chats", params: { otherUserId: p.id } });
+              };
+              disabled = false;
+            } else if (status?.invited) {
+              buttonText = "ПРИГЛАШЕНО";
+              onPress = () => {};
+              disabled = true;
+            }
+
             return (
               <View key={p.id} style={styles.card}>
                 <View style={styles.cardRow}>
@@ -276,8 +421,8 @@ export default function FormsScreen() {
                     {bio ? renderBio(bio) : <Text style={styles.bioEmpty}>Нет описания</Text>}
                   </View>
                 </View>
-                <TouchableOpacity style={styles.primaryBtn} onPress={() => onInvite(p.id)}>
-                  <Text style={styles.primaryBtnText}>ПРИГЛАСИТЬ</Text>
+                <TouchableOpacity style={styles.primaryBtn} onPress={onPress} disabled={disabled}>
+                  <Text style={styles.primaryBtnText}>{buttonText}</Text>
                 </TouchableOpacity>
               </View>
             );

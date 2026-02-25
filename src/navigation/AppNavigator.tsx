@@ -26,7 +26,7 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   ResetPassword: { email: string };
   Skills: { userId: string };
-  Tabs: undefined;
+  Tabs: { screen?: string; params?: { otherUserId?: string } } | undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -34,7 +34,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 type BottomTabParamList = {
   Projects: undefined;
   Forms: undefined;
-  Chats: undefined;
+  Chats: { otherUserId?: string } | undefined;
   Profile: undefined;
 };
 
