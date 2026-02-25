@@ -13,6 +13,7 @@ import {
   Switch,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Linking from "expo-linking";
 import * as ImagePicker from "expo-image-picker";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as FileSystemLegacy from "expo-file-system/legacy";
@@ -557,14 +558,21 @@ export default function ProfileScreen({ navigation }: any) {
 
         <View style={styles.section}>
           <Text style={styles.label}>ХОЧУ В ПРОЕКТ</Text>
-          <View style={styles.switchRow}>
-            <Text style={styles.switchValue}>{wantInProject ? "ВКЛ" : "ВЫКЛ"}</Text>
-            <Switch
-              value={wantInProject}
-              onValueChange={onToggleWantInProject}
-              disabled={loading}
+          <TouchableOpacity
+            style={[styles.toggleBtn, wantInProject ? styles.toggleBtnOn : styles.toggleBtnOff]}
+            onPress={() => onToggleWantInProject(!wantInProject)}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={wantInProject ? "checkmark-circle" : "close-circle"}
+              size={24}
+              color={wantInProject ? "#0a7a2f" : "#d00000"}
             />
-          </View>
+            <Text style={[styles.toggleText, wantInProject ? styles.toggleTextOn : styles.toggleTextOff]}>
+              {wantInProject ? "ГОТОВ К ПРОЕКТАМ" : "НЕ ГОТОВ К ПРОЕКТАМ"}
+            </Text>
+          </TouchableOpacity>
 
           {wantStatus ? (
             <Text style={[styles.status, wantStatus.type === "error" ? styles.statusError : styles.statusSuccess]}>{wantStatus.message}</Text>
@@ -596,17 +604,20 @@ export default function ProfileScreen({ navigation }: any) {
 
         <View style={styles.section}>
           <Text style={styles.label}>О СЕБЕ</Text>
-          <TextInput
-            style={[styles.input, { height: 64, textAlignVertical: "top" }]}
-            value={newBio}
-            onChangeText={(v) => {
-              setNewBio(v);
-              if (bioStatus) setBioStatus(null);
-            }}
-            placeholder="Расскажи о себе"
-            placeholderTextColor="#8A8A8A"
-            multiline
-          />
+          <TouchableOpacity onPress={() => { const url = newBio.trim(); if (url.startsWith('http://') || url.startsWith('https://')) Linking.openURL(url); }} activeOpacity={0.8}>
+            <TextInput
+              style={[styles.input, { height: 64, textAlignVertical: "top" }]}
+              value={newBio}
+              onChangeText={(v) => {
+                setNewBio(v);
+                if (bioStatus) setBioStatus(null);
+              }}
+              onBlur={() => setNewBio(bio || "")}
+              placeholder="Расскажи о себе"
+              placeholderTextColor="#8A8A8A"
+              multiline
+            />
+          </TouchableOpacity>
 
           {bioStatus ? (
             <Text style={[styles.status, bioStatus.type === "error" ? styles.statusError : styles.statusSuccess]}>{bioStatus.message}</Text>
@@ -834,6 +845,38 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     color: "#000",
   },
+  toggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 56,
+    borderWidth: 1,
+    borderColor: "#000",
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: "#fff",
+  },
+  toggleBtnOn: {
+    backgroundColor: "#e8f5e8",
+    borderColor: "#0a7a2f",
+  },
+  toggleBtnOff: {
+    backgroundColor: "#fce8e6",
+    borderColor: "#d00000",
+  },
+  toggleText: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    marginLeft: 8,
+  },
+  toggleTextOn: {
+    color: "#0a7a2f",
+  },
+  toggleTextOff: {
+    color: "#d00000",
+  },
   roleWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -934,7 +977,7 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   status: {
-    marginTop: -4,
+    marginTop: 8,
     marginBottom: 12,
     fontSize: 12,
     fontWeight: "700",

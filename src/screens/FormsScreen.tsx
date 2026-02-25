@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { View, StyleSheet, Text, ScrollView, Image, ActivityIndicator, TouchableOpacity } from "react-native";
 import { supabase } from "../lib/supabase";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Linking from "expo-linking";
 
 type ProfileRow = {
   id: string;
@@ -30,6 +32,21 @@ const ROLE_OPTIONS: Array<{ key: string; title: string }> = [
   { key: "crossplatform", title: "CROSSPLATFORM" },
 ];
 
+const renderBio = (text: string) => {
+  const parts = text.split(/(https?:\/\/[^\s]+)/);
+  return parts.map((part, index) => {
+    if (part.match(/^https?:\/\//)) {
+      return (
+        <TouchableOpacity key={index} onPress={() => Linking.openURL(part)}>
+          <Text style={[styles.bio, styles.bioLink]}>{part}</Text>
+        </TouchableOpacity>
+      );
+    } else {
+      return <Text key={index} style={styles.bio}>{part}</Text>;
+    }
+  });
+};
+
 export default function FormsScreen() {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: "error" | "success"; message: string } | null>(null);
@@ -39,6 +56,7 @@ export default function FormsScreen() {
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [skillsFilter, setSkillsFilter] = useState<number[]>([]);
   const [skillIdsByUser, setSkillIdsByUser] = useState<Record<string, number[]>>({});
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
 
   const filteredItems = useMemo(() => {
     return items.filter((p) => {
@@ -67,10 +85,26 @@ export default function FormsScreen() {
     setSkillsFilter([]);
   };
 
+  const onInvite = async (toUserId: string) => {
+    if (!myUserId) return;
+    try {
+      const { error } = await supabase.from('invitations').insert({
+        from_user: myUserId,
+        to_user: toUserId,
+        status: 'pending'
+      });
+      if (error) throw error;
+      alert('Приглашение отправлено');
+    } catch (e) {
+      alert('Ошибка отправки приглашения');
+    }
+  };
+
   const loadSkills = async () => {
     try {
       const { data, error } = await supabase.from("skills").select("id,name,category").order("name", { ascending: true });
       if (error) throw error;
+      console.log("loaded skills:", data);
       setSkills((data ?? []) as SkillRow[]);
     } catch (e) {
       console.error("FormsScreen loadSkills error:", e);
@@ -97,22 +131,18 @@ export default function FormsScreen() {
       const rows = (data ?? []) as ProfileRow[];
       setItems(rows);
 
-      if (skillsFilter.length > 0) {
-        const userIds = rows.map((r) => r.id);
-        const { data: usData, error: usError } = await supabase
-          .from("user_skills")
-          .select("user_id, skill_id")
-          .in("user_id", userIds);
-        if (usError) throw usError;
-        const map: Record<string, number[]> = {};
-        (usData ?? []).forEach((r: any) => {
-          if (!map[r.user_id]) map[r.user_id] = [];
-          map[r.user_id].push(r.skill_id);
-        });
-        setSkillIdsByUser(map);
-      } else {
-        setSkillIdsByUser({});
-      }
+      const userIds = rows.map((r) => r.id);
+      const { data: usData, error: usError } = await supabase
+        .from("user_skills")
+        .select("user_id, skill_id")
+        .in("user_id", userIds);
+      if (usError) throw usError;
+      const map: Record<string, number[]> = {};
+      (usData ?? []).forEach((r: any) => {
+        if (!map[r.user_id]) map[r.user_id] = [];
+        map[r.user_id].push(r.skill_id);
+      });
+      setSkillIdsByUser(map);
     } catch (e) {
       setItems([]);
       const msg =
@@ -141,56 +171,68 @@ export default function FormsScreen() {
     <View style={styles.container}>
       <View style={styles.headerRow}>
         <View />
-        <TouchableOpacity onPress={load} disabled={loading} style={[styles.refreshBtn, loading && styles.disabled]}>
-          <Text style={styles.refreshText}>ОБНОВИТЬ</Text>
-        </TouchableOpacity>
       </View>
 
       <View style={styles.filtersBlock}>
-        <View style={styles.filtersHeaderRow}>
-          <Text style={styles.filtersTitle}>ФИЛЬТРЫ</Text>
-          {(rolesFilter.length > 0 || skillsFilter.length > 0) && (
-            <TouchableOpacity onPress={clearFilters} disabled={loading}>
-              <Text style={styles.clearText}>СБРОСИТЬ</Text>
+        <TouchableOpacity style={styles.filtersHeaderRow} onPress={() => setIsFiltersExpanded(!isFiltersExpanded)} activeOpacity={0.8}>
+          <View style={styles.filtersTitleRow}>
+            <Text style={styles.filtersTitle}>ФИЛЬТРЫ</Text>
+            <Ionicons name={isFiltersExpanded ? "chevron-up" : "chevron-down"} size={16} color="#000" />
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={load} disabled={loading} style={[loading && styles.disabled]}>
+              <View style={styles.btnContent}>
+                <Ionicons name="refresh" size={14} color="#000" />
+                <Text style={[styles.refreshText, { marginLeft: 6 }]}>ОБНОВИТЬ</Text>
+              </View>
             </TouchableOpacity>
-          )}
-        </View>
-
-        <Text style={styles.filterLabel}>РОЛИ</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-          {ROLE_OPTIONS.map((opt) => {
-            const selected = rolesFilter.includes(opt.key);
-            return (
-              <TouchableOpacity
-                key={opt.key}
-                onPress={() => toggleRole(opt.key)}
-                disabled={loading}
-                style={[styles.chip, selected ? styles.chipSelected : null]}
-              >
-                <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{opt.title}</Text>
+            {(rolesFilter.length > 0 || skillsFilter.length > 0) && (
+              <TouchableOpacity onPress={clearFilters} disabled={loading}>
+                <Text style={styles.clearText}>СБРОСИТЬ</Text>
               </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+            )}
+          </View>
+        </TouchableOpacity>
 
-        <Text style={[styles.filterLabel, { marginTop: 12 }]}>НАВЫКИ</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
-          {skills.map((s) => {
-            const selected = skillsFilter.includes(s.id);
-            return (
-              <TouchableOpacity
-                key={s.id}
-                onPress={() => toggleSkill(s.id)}
-                disabled={loading}
-                style={[styles.chip, selected ? styles.chipSelected : null]}
-              >
-                <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]} numberOfLines={1}>
-                  {s.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        {isFiltersExpanded && (
+          <>
+            <Text style={styles.filterLabel}>РОЛИ</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+              {ROLE_OPTIONS.map((opt) => {
+                const selected = rolesFilter.includes(opt.key);
+                return (
+                  <TouchableOpacity
+                    key={opt.key}
+                    onPress={() => toggleRole(opt.key)}
+                    disabled={loading}
+                    style={[styles.chip, selected ? styles.chipSelected : null]}
+                  >
+                    <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]}>{opt.title}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <Text style={[styles.filterLabel, { marginTop: 12 }]}>НАВЫКИ</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
+              {skills.map((s) => {
+                const selected = skillsFilter.includes(s.id);
+                return (
+                  <TouchableOpacity
+                    key={s.id}
+                    onPress={() => toggleSkill(s.id)}
+                    disabled={loading}
+                    style={[styles.chip, selected ? styles.chipSelected : null]}
+                  >
+                    <Text style={[styles.chipText, selected ? styles.chipTextSelected : null]} numberOfLines={1}>
+                      {s.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
       </View>
 
       {status ? (
@@ -215,6 +257,8 @@ export default function FormsScreen() {
             const v = p.updated_at ? Date.parse(p.updated_at) : 0;
             const displayAvatar = avatarUrl ? `${avatarUrl}${avatarUrl.includes("?") ? "&" : "?"}v=${v}` : null;
             const rolesText = Array.isArray((p as any).roles) && (p as any).roles.length ? (p as any).roles.map((r: string) => r.toUpperCase()).join(" · ") : "";
+            const userSkillIds = skillIdsByUser[p.id] ?? [];
+            const userSkills = userSkillIds.map(id => skills.find(s => s.id === id)?.name).filter(Boolean).join(", ");
 
             return (
               <View key={p.id} style={styles.card}>
@@ -228,9 +272,13 @@ export default function FormsScreen() {
                   <View style={styles.cardInfo}>
                     <Text style={styles.name}>{name}</Text>
                     {rolesText ? <Text style={styles.roles}>{rolesText}</Text> : null}
-                    {bio ? <Text style={styles.bio}>{bio}</Text> : <Text style={styles.bioEmpty}>Нет описания</Text>}
+                    {userSkills ? <Text style={styles.skills}>Навыки: {userSkills}</Text> : null}
+                    {bio ? renderBio(bio) : <Text style={styles.bioEmpty}>Нет описания</Text>}
                   </View>
                 </View>
+                <TouchableOpacity style={styles.primaryBtn} onPress={() => onInvite(p.id)}>
+                  <Text style={styles.primaryBtnText}>ПРИГЛАСИТЬ</Text>
+                </TouchableOpacity>
               </View>
             );
           })}
@@ -273,12 +321,22 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     color: "#000",
   },
+  filtersTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   clearText: {
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1.5,
     textTransform: "uppercase",
     color: "#000",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   filterLabel: {
     fontSize: 10,
@@ -313,6 +371,10 @@ const styles = StyleSheet.create({
   },
   chipTextSelected: {
     color: "#fff",
+  },
+  btnContent: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   refreshBtn: {
     height: 40,
@@ -418,5 +480,30 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#777",
     fontStyle: "italic",
+  },
+  bioLink: {
+    color: "#007AFF",
+    textDecorationLine: "underline",
+  },
+  primaryBtn: {
+    height: 48,
+    backgroundColor: "#000",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+  primaryBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 2,
+  },
+  skills: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    color: "#000",
+    marginTop: 4,
   },
 });

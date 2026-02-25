@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Platform } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { supabase } from "../lib/supabase";
 import type { RootStackParamList } from "../navigation/AppNavigator";
 import ArtelLogo from "../assets/ArtelLogo";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
+
+WebBrowser.maybeCompleteAuthSession();
 
 type Props = NativeStackScreenProps<RootStackParamList, "Login">;
 
@@ -19,8 +23,22 @@ export default function LoginScreen({ navigation }: Props) {
     const unsubscribe = navigation.addListener("focus", () => {
       setStatus(null);
       setPasswordVisible(false);
+      setLoading(false);
     });
     return unsubscribe;
+  }, [navigation]);
+
+  useEffect(() => {
+    const sub = Linking.addEventListener("url", async ({ url }) => {
+      if (!url) return;
+      if (!url.includes("auth-callback")) return;
+      try {
+        await supabase.auth.exchangeCodeForSession(url);
+      } catch (e) {
+        console.error("OAuth exchangeCodeForSession error:", e);
+      }
+    });
+    return () => sub.remove();
   }, [navigation]);
 
   const onLogin = async () => {
@@ -41,7 +59,6 @@ export default function LoginScreen({ navigation }: Props) {
 
       if (data.user) {
         setStatus({ type: "success", message: "Вход выполнен" });
-        navigation.replace("Tabs");
       }
     } catch (e) {
       setStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка при входе" });
@@ -52,6 +69,46 @@ export default function LoginScreen({ navigation }: Props) {
 
   const onForgotPassword = () => {
     navigation.navigate("ForgotPassword");
+  };
+
+  const onOAuth = async () => {
+    setStatus(null);
+    setLoading(true);
+    try {
+      const redirectTo = __DEV__ ? "artelapp://auth-callback" : Linking.createURL("auth-callback");
+      console.log("redirectTo:", redirectTo);
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "github",
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error) throw error;
+      const authUrl = data?.url;
+      if (!authUrl) throw new Error("Не удалось открыть авторизацию");
+
+      if (Platform.OS === "android") {
+        await Linking.openURL(authUrl);
+        setLoading(false);
+        return;
+      }
+
+      const res = await WebBrowser.openAuthSessionAsync(authUrl, redirectTo);
+      if (res.type !== "success") return;
+
+      if ("url" in res && typeof (res as any).url === "string") {
+        await supabase.auth.exchangeCodeForSession((res as any).url);
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) throw new Error("Не удалось создать сессию");
+    } catch (e) {
+      setStatus({ type: "error", message: e instanceof Error ? e.message : "Ошибка авторизации" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -104,6 +161,12 @@ export default function LoginScreen({ navigation }: Props) {
         <TouchableOpacity disabled={loading} onPress={onLogin} style={[styles.primaryBtn, loading && styles.disabled]}>
           <Text style={styles.primaryBtnText}>ВОЙТИ</Text>
         </TouchableOpacity>
+
+        <View style={styles.oauthRow}>
+          <TouchableOpacity disabled={loading} onPress={onOAuth} style={[styles.oauthBtn, loading && styles.disabled]}>
+            <Text style={styles.oauthText}>GITHUB</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.footerLinks}>
           <TouchableOpacity onPress={() => navigation.navigate("RegisterStep1")}>
@@ -193,6 +256,26 @@ const styles = StyleSheet.create({
     marginTop: 14,
     flexDirection: "row",
     justifyContent: "space-between",
+  },
+  oauthRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    gap: 10,
+  },
+  oauthBtn: {
+    flex: 1,
+    height: 48,
+    borderWidth: 1,
+    borderColor: "#000",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  oauthText: {
+    color: "#000",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 2,
+    textTransform: "uppercase",
   },
   link: {
     fontSize: 11,

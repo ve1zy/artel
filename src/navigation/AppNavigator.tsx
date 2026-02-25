@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import * as Linking from "expo-linking";
 import { supabase } from "../lib/supabase";
 import LoginScreen from "../screens/LoginScreen";
 import RegisterStep1Screen from "../screens/RegisterStep1Screen";
@@ -119,6 +120,76 @@ export default function AppNavigator() {
   useEffect(() => {
     let isMounted = true;
 
+    const handleUrl = async (url: string) => {
+      if (!url) return;
+      if (!url.includes("auth-callback")) return;
+      console.log("OAuth callback url:", url);
+
+      const parsed = Linking.parse(url);
+      const params: Record<string, any> = {
+        ...(parsed?.queryParams ?? {}),
+      };
+      const fragmentParams: Record<string, any> = {};
+      const fragment = url.split('#')[1];
+      if (fragment) {
+        fragment.split('&').forEach((pair: string) => {
+          const [key, value] = pair.split('=');
+          if (key && value) fragmentParams[decodeURIComponent(key)] = decodeURIComponent(value);
+        });
+      }
+      console.log("OAuth callback params:", params);
+      console.log("OAuth callback fragment params:", fragmentParams);
+
+      if (!url.includes("code=") && !url.includes("error=") && !url.includes("access_token=")) {
+        console.log("OAuth callback ignored (no auth params)");
+        return;
+      }
+      try {
+        if (url.includes("code=")) {
+          const { data: exchanged, error: exchangeError } = await supabase.auth.exchangeCodeForSession(url);
+          console.log("OAuth exchange result:", {
+            hasSession: !!exchanged?.session,
+            hasUser: !!exchanged?.user,
+            exchangeError: exchangeError?.message ?? null,
+          });
+        } else if (fragmentParams.access_token && fragmentParams.refresh_token) {
+          console.log("OAuth implicit flow: setting session with tokens");
+          const { data, error } = await supabase.auth.setSession({
+            access_token: fragmentParams.access_token,
+            refresh_token: fragmentParams.refresh_token,
+          });
+          console.log("OAuth setSession result:", {
+            hasSession: !!data.session,
+            setError: error?.message ?? null,
+          });
+        } else {
+          console.log("OAuth callback has neither code nor tokens");
+        }
+
+        const { data, error: sessionError } = await supabase.auth.getSession();
+        console.log("OAuth getSession result:", {
+          hasSession: !!data.session,
+          sessionError: sessionError?.message ?? null,
+        });
+        if (isMounted) {
+          setIsAuthed(!!data.session);
+          if (data.session?.user) ensureProfileRow(data.session.user);
+          setCheckingSession(false);
+        }
+      } catch (e) {
+        console.error("OAuth exchangeCodeForSession error:", e);
+        if (isMounted) setCheckingSession(false);
+      }
+    };
+
+    Linking.getInitialURL().then((url) => {
+      if (url) handleUrl(url);
+    });
+
+    const urlSub = Linking.addEventListener("url", ({ url }) => {
+      if (url) handleUrl(url);
+    });
+
     supabase.auth.getSession().then(({ data }) => {
       if (!isMounted) return;
       setIsAuthed(!!data.session);
@@ -126,8 +197,9 @@ export default function AppNavigator() {
       setCheckingSession(false);
     });
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
+      console.log("supabase onAuthStateChange:", event, "hasSession=", !!session);
       setIsAuthed(!!session);
       if (session?.user) ensureProfileRow(session.user);
     });
@@ -135,6 +207,7 @@ export default function AppNavigator() {
     return () => {
       isMounted = false;
       subscription.subscription?.unsubscribe();
+      urlSub.remove();
     };
   }, []);
 
@@ -143,7 +216,6 @@ export default function AppNavigator() {
   return (
     <NavigationContainer linking={linking}>
       <Stack.Navigator
-        initialRouteName={isAuthed ? "Tabs" : "Login"}
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: "#fff" },
