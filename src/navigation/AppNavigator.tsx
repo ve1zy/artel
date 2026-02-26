@@ -18,6 +18,7 @@ import TabProjectsIcon from "../assets/TabProjectsIcon";
 import TabFormsIcon from "../assets/TabFormsIcon";
 import TabChatsIcon from "../assets/TabChatsIcon";
 import TabProfileIcon from "../assets/TabProfileIcon";
+import { syncPushTopicForUser } from "../lib/push";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -26,7 +27,7 @@ export type RootStackParamList = {
   ForgotPassword: undefined;
   ResetPassword: { email: string };
   Skills: { userId: string };
-  Tabs: { screen?: string; params?: { otherUserId?: string } } | undefined;
+  Tabs: { screen?: string; params?: { otherUserId?: string; openKey?: number } } | undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -34,7 +35,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 type BottomTabParamList = {
   Projects: undefined;
   Forms: undefined;
-  Chats: { otherUserId?: string } | undefined;
+  Chats: { otherUserId?: string; openKey?: number } | undefined;
   Profile: undefined;
 };
 
@@ -194,6 +195,7 @@ export default function AppNavigator() {
       if (!isMounted) return;
       setIsAuthed(!!data.session);
       if (data.session?.user) ensureProfileRow(data.session.user);
+      void syncPushTopicForUser(data.session?.user?.id ?? null);
       setCheckingSession(false);
     });
 
@@ -202,6 +204,7 @@ export default function AppNavigator() {
       console.log("supabase onAuthStateChange:", event, "hasSession=", !!session);
       setIsAuthed(!!session);
       if (session?.user) ensureProfileRow(session.user);
+      void syncPushTopicForUser(session?.user?.id ?? null);
     });
 
     return () => {

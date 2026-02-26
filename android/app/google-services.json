@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "205532500812",
+    "project_id": "artel-a904d",
+    "storage_bucket": "artel-a904d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:205532500812:android:42504002fdcefa79b6f5e9",
+        "android_client_info": {
+          "package_name": "com.ve1zy.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQYk0aTAXSuQ6J6398CeB3s8Q72raF8mc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

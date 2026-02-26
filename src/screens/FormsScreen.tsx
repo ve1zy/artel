@@ -63,15 +63,26 @@ export default function FormsScreen() {
 
   const filteredItems = useMemo(() => {
     return items.filter((p) => {
-      if (rolesFilter.length > 0) {
-        const pr = Array.isArray((p as any).roles) ? ((p as any).roles as string[]) : [];
-        if (!pr.some((r) => rolesFilter.includes(r))) return false;
-      }
-      if (skillsFilter.length > 0) {
-        const userSkillIds = skillIdsByUser[p.id] ?? [];
-        if (!userSkillIds.some((sid) => skillsFilter.includes(sid))) return false;
-      }
-      return true;
+      const hasRoleFilter = rolesFilter.length > 0;
+      const hasSkillFilter = skillsFilter.length > 0;
+
+      if (!hasRoleFilter && !hasSkillFilter) return true;
+
+      const roleMatch = hasRoleFilter
+        ? (() => {
+            const pr = Array.isArray((p as any).roles) ? ((p as any).roles as string[]) : [];
+            return pr.some((r) => rolesFilter.includes(r));
+          })()
+        : false;
+
+      const skillMatch = hasSkillFilter
+        ? (() => {
+            const userSkillIds = skillIdsByUser[p.id] ?? [];
+            return userSkillIds.some((sid) => skillsFilter.includes(sid));
+          })()
+        : false;
+
+      return roleMatch || skillMatch;
     });
   }, [items, rolesFilter, skillsFilter, skillIdsByUser]);
 

@@ -11,6 +11,8 @@ type Invitation = {
   status: string;
   created_at: string;
   from_user_name?: string;
+  project_id?: string | null;
+  project_title?: string | null;
 };
 
 type Chat = {
@@ -21,6 +23,8 @@ type Chat = {
   other_user_name: string;
   other_user_avatar_url?: string | null;
   other_user_roles_text?: string;
+  project_id?: string | null;
+  project_title?: string | null;
 };
 
 type Message = {
@@ -50,6 +54,7 @@ export default function ChatsScreen() {
   const [invitationsSub, setInvitationsSub] = useState<any>();
   const messagesScrollRef = useRef<ScrollView>(null);
   const openedFromParamsRef = useRef<string | null>(null);
+  const lastOpenKeyRef = useRef<number | null>(null);
   const [isChatProfileExpanded, setIsChatProfileExpanded] = useState(false);
   const [chatProfileLoading, setChatProfileLoading] = useState(false);
   const [chatProfileBio, setChatProfileBio] = useState<string>("");
@@ -171,12 +176,14 @@ export default function ChatsScreen() {
 
   useEffect(() => {
     const otherUserId: string | undefined = route?.params?.otherUserId;
+    const openKey: number | undefined = route?.params?.openKey;
     console.log('Route params:', route?.params, 'otherUserId:', otherUserId);
     if (!otherUserId) {
       openedFromParamsRef.current = null;
+      lastOpenKeyRef.current = null;
       return;
     }
-    if (openedFromParamsRef.current === otherUserId) {
+    if (openedFromParamsRef.current === otherUserId && (openKey == null || lastOpenKeyRef.current === openKey)) {
       console.log('Already opened chat for', otherUserId);
       return;
     }
@@ -198,6 +205,7 @@ export default function ChatsScreen() {
       if (found) {
         console.log('Found chat, opening:', found.id);
         openedFromParamsRef.current = otherUserId;
+        lastOpenKeyRef.current = openKey ?? null;
         openChat(found);
       } else {
         console.log('Chat not found for user', otherUserId);
@@ -205,14 +213,19 @@ export default function ChatsScreen() {
     };
     
     tryOpenChat();
-  }, [route?.params?.otherUserId, userId]);
+  }, [route?.params?.otherUserId, route?.params?.openKey, userId]);
 
   // Handle focus events for tab navigation
   useFocusEffect(
     useCallback(() => {
       console.log('ChatsScreen focused, route params:', route?.params);
       const otherUserId: string | undefined = route?.params?.otherUserId;
-      if (otherUserId && userId && openedFromParamsRef.current !== otherUserId) {
+      const openKey: number | undefined = route?.params?.openKey;
+      if (
+        otherUserId &&
+        userId &&
+        (openedFromParamsRef.current !== otherUserId || (openKey != null && lastOpenKeyRef.current !== openKey))
+      ) {
         console.log('Focus effect: attempting to open chat with', otherUserId);
         const tryOpenChat = async () => {
           const currentChats = await loadChats();
@@ -220,12 +233,13 @@ export default function ChatsScreen() {
           if (found) {
             console.log('Focus effect: found chat, opening:', found.id);
             openedFromParamsRef.current = otherUserId;
+            lastOpenKeyRef.current = openKey ?? null;
             openChat(found);
           }
         };
         tryOpenChat();
       }
-    }, [route?.params?.otherUserId, userId])
+    }, [route?.params?.otherUserId, route?.params?.openKey, userId])
   );
 
   const getUser = async () => {
@@ -243,7 +257,7 @@ export default function ChatsScreen() {
     console.log("loadInvitations: loading for userId:", userId);
     const { data, error } = await supabase
       .from("invitations")
-      .select("id, from_user, to_user, status, created_at")
+      .select("id, from_user, to_user, status, created_at, project_id, project_title")
       .eq("to_user", userId)
       .eq("status", "pending")
       .order("created_at", { ascending: false });
@@ -323,8 +337,20 @@ export default function ChatsScreen() {
         Alert.alert('Ошибка', 'Чат уже существует');
         return;
       }
+
+      const { data: invRow, error: invRowError } = await supabase
+        .from("invitations")
+        .select("project_id, project_title")
+        .eq("id", invId)
+        .maybeSingle();
+      if (invRowError) throw invRowError;
+
       await supabase.from('invitations').update({ status: 'accepted' }).eq('id', invId);
-      await supabase.from('chats').insert({ participants: [userId!, fromUser] });
+      await supabase.from('chats').insert({
+        participants: [userId!, fromUser],
+        project_id: (invRow as any)?.project_id ?? null,
+        project_title: (invRow as any)?.project_title ?? null,
+      });
       loadInvitations();
       loadChats();
     } catch (error) {
@@ -459,8 +485,11 @@ export default function ChatsScreen() {
             </View>
           )}
           <Text style={styles.chatTitle}>{selectedChat.other_user_name}</Text>
+          {selectedChat.project_title ? <Text style={styles.chatHeaderProjectText}>{selectedChat.project_title}</Text> : null}
           {selectedChat.other_user_roles_text ? (
-            <Text style={styles.chatHeaderRole}>{selectedChat.other_user_roles_text}</Text>
+            <Text style={[styles.chatHeaderRole, !selectedChat.project_title ? { marginTop: 0 } : null]}>
+              {selectedChat.other_user_roles_text}
+            </Text>
           ) : null}
 
           <TouchableOpacity
@@ -532,6 +561,7 @@ export default function ChatsScreen() {
           {invitations.map((inv) => (
             <View key={inv.id} style={styles.invitation}>
               <Text style={styles.invitationText}>От {inv.from_user_name || 'Неизвестный'}</Text>
+              {inv.project_title ? <Text style={styles.invitationSubText}>{inv.project_title}</Text> : null}
               <View style={styles.invitationBtns}>
                 <TouchableOpacity onPress={() => acceptInvitation(inv.id, inv.from_user)} style={styles.acceptBtn}>
                   <Text style={styles.acceptText}>Принять</Text>
@@ -564,6 +594,7 @@ export default function ChatsScreen() {
                   )}
                   <View style={styles.chatInfo}>
                     <Text style={styles.chatText}>{chat.other_user_name}</Text>
+                    {chat.project_title ? <Text style={styles.chatProjectText}>{chat.project_title}</Text> : null}
                     {chat.other_user_roles_text ? <Text style={styles.chatRole}>{chat.other_user_roles_text}</Text> : null}
                   </View>
                 </View>
@@ -603,6 +634,13 @@ const styles = StyleSheet.create({
   },
   invitationText: {
     fontSize: 14,
+    marginBottom: 10,
+  },
+  invitationSubText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#666",
+    marginTop: -6,
     marginBottom: 10,
   },
   invitationBtns: {
@@ -672,6 +710,11 @@ const styles = StyleSheet.create({
     color: "#666",
     marginTop: 2,
   },
+  chatProjectText: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+  },
   emptyText: {
     fontSize: 14,
     color: "#666",
@@ -727,7 +770,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "800",
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 6,
   },
   chatHeaderProfile: {
     alignItems: "center",
@@ -744,8 +787,15 @@ const styles = StyleSheet.create({
   chatHeaderRole: {
     fontSize: 12,
     color: "#666",
-    marginTop: -14,
-    marginBottom: 20,
+    marginTop: 4,
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  chatHeaderProjectText: {
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 2,
+    marginBottom: 2,
     textAlign: "center",
   },
   chatProfileToggleBtn: {
