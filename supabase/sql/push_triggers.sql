@@ -38,8 +38,7 @@ begin
   );
 
   headers := jsonb_build_object(
-    'content-type', 'application/json',
-    'x-push-secret', secret
+    'content-type', 'application/json'
   );
 
   perform net.http_post(
@@ -115,7 +114,7 @@ begin
 end;
 $$;
 
--- Messages: notify the other chat participant
+-- On message insert
 create or replace function public._push_on_message_insert()
 returns trigger
 language plpgsql
@@ -123,41 +122,22 @@ security definer
 set search_path = public
 as $$
 declare
-  chat_participants uuid[];
-  other_user uuid;
-  project_title text;
-  title text;
-  body text;
-  data jsonb;
+  other_user_id uuid;
 begin
-  select c.participants, c.project_title into chat_participants, project_title
-  from public.chats c
-  where c.id = new.chat_id;
+  -- Find another user who wrote in this chat (excluding sender)
+  select user_id into other_user_id
+  from messages
+  where chat_id = new.chat_id and user_id != new.user_id
+  limit 1;
 
-  if chat_participants is null then
-    return new;
+  if other_user_id is not null then
+    perform public._push_to_user_topic(
+      other_user_id,
+      'New message',
+      coalesce(new.message, 'New message in chat'),
+      jsonb_build_object('type', 'message', 'chat_id', new.chat_id)
+    );
   end if;
-
-  select p from unnest(chat_participants) p where p <> new.user_id limit 1 into other_user;
-  if other_user is null then
-    return new;
-  end if;
-
-  title := 'Новое сообщение';
-  if project_title is not null and length(project_title) > 0 then
-    title := 'Новое сообщение · ' || project_title;
-  end if;
-
-  body := left(coalesce(new.message, ''), 120);
-
-  data := jsonb_build_object(
-    'type', 'message',
-    'chat_id', new.chat_id::text,
-    'from_user', new.user_id::text,
-    'project_title', coalesce(project_title, '')
-  );
-
-  perform public._push_to_user_topic(other_user, title, body, data);
   return new;
 end;
 $$;

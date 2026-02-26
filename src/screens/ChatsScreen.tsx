@@ -13,6 +13,9 @@ type Invitation = {
   from_user_name?: string;
   project_id?: string | null;
   project_title?: string | null;
+  role: string;
+  from_user_bio?: string;
+  from_user_skills: string[];
 };
 
 type Chat = {
@@ -48,6 +51,7 @@ export default function ChatsScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [chats, setChats] = useState<Chat[]>([]);
+  const [acceptingInvitations, setAcceptingInvitations] = useState<Set<string>>(new Set());
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
@@ -257,7 +261,7 @@ export default function ChatsScreen() {
     console.log("loadInvitations: loading for userId:", userId);
     const { data, error } = await supabase
       .from("invitations")
-      .select("id, from_user, to_user, status, created_at, project_id, project_title")
+      .select("id, from_user, to_user, status, created_at, project_id, project_title, role")
       .eq("to_user", userId)
       .eq("status", "pending")
       .order("created_at", { ascending: false });
@@ -265,15 +269,25 @@ export default function ChatsScreen() {
     if (error) console.error("loadInvitations error:", error);
     else {
       const invitationsWithNames = await Promise.all(
-        (data || []).map(async (i: Invitation) => {
-          console.log("loadInvitations: fetching name for", i.from_user);
-          const { data: profile, error: profileError } = await supabase
-            .from("profiles")
-            .select("full_name")
-            .eq("id", i.from_user)
-            .maybeSingle();
-          console.log("loadInvitations: profile for", i.from_user, ":", profile, "error:", profileError);
-          return { ...i, from_user_name: profile?.full_name };
+        (data || []).map(async (i: any) => {
+          console.log("loadInvitations: fetching profile for", i.from_user);
+          const [{ data: profile, error: profileError }, { data: skillsData, error: skillsError }] = await Promise.all([
+            supabase
+              .from("profiles")
+              .select("full_name, bio")
+              .eq("id", i.from_user)
+              .maybeSingle(),
+            supabase
+              .from("user_skills")
+              .select("skills(name)")
+              .eq("user_id", i.from_user),
+          ]);
+          console.log("loadInvitations: profile:", profile, "skills:", skillsData, "errors:", profileError, skillsError);
+          const bio = (profile?.bio as string) || "";
+          const skills = (skillsData || [])
+            .map((row: any) => (row?.skills as any)?.name as string)
+            .filter((v: string) => v && v.trim());
+          return { ...i, from_user_name: profile?.full_name, from_user_bio: bio, from_user_skills: skills };
         })
       );
       console.log("loadInvitations: final invitations:", invitationsWithNames);
@@ -327,6 +341,8 @@ export default function ChatsScreen() {
   };
 
   const acceptInvitation = async (invId: string, fromUser: string) => {
+    if (acceptingInvitations.has(invId)) return;
+    setAcceptingInvitations(prev => new Set(prev).add(invId));
     try {
       // Check if chat already exists
       const { data: existingChat } = await supabase
@@ -355,6 +371,12 @@ export default function ChatsScreen() {
       loadChats();
     } catch (error) {
       Alert.alert('Ошибка', 'Не удалось принять приглашение');
+    } finally {
+      setAcceptingInvitations(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(invId);
+        return newSet;
+      });
     }
   };
 
@@ -560,11 +582,13 @@ export default function ChatsScreen() {
           <Text style={styles.sectionTitle}>Приглашения</Text>
           {invitations.map((inv) => (
             <View key={inv.id} style={styles.invitation}>
-              <Text style={styles.invitationText}>От {inv.from_user_name || 'Неизвестный'}</Text>
+              <Text style={styles.invitationText}>От {inv.from_user_name || 'Неизвестный'} · {inv.role}</Text>
               {inv.project_title ? <Text style={styles.invitationSubText}>{inv.project_title}</Text> : null}
+              {inv.from_user_bio ? <Text style={styles.invitationSubText}>{inv.from_user_bio}</Text> : null}
+              {inv.from_user_skills.length > 0 ? <Text style={styles.invitationSubText}>Навыки: {inv.from_user_skills.join(', ')}</Text> : null}
               <View style={styles.invitationBtns}>
-                <TouchableOpacity onPress={() => acceptInvitation(inv.id, inv.from_user)} style={styles.acceptBtn}>
-                  <Text style={styles.acceptText}>Принять</Text>
+                <TouchableOpacity onPress={() => acceptInvitation(inv.id, inv.from_user)} style={[styles.acceptBtn, acceptingInvitations.has(inv.id) && styles.disabled]} disabled={acceptingInvitations.has(inv.id)}>
+                  <Text style={styles.acceptText}>{acceptingInvitations.has(inv.id) ? 'Принимаю...' : 'Принять'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => rejectInvitation(inv.id)} style={styles.rejectBtn}>
                   <Text style={styles.rejectText}>Отклонить</Text>
@@ -657,6 +681,9 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 12,
     fontWeight: "800",
+  },
+  disabled: {
+    opacity: 0.5,
   },
   rejectBtn: {
     backgroundColor: "#d00000",

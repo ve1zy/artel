@@ -1,6 +1,7 @@
 import { PermissionsAndroid, Platform } from "react-native";
 
 let currentTopic: string | null = null;
+let tokenRefreshListenerSet = false;
 
 const requestAndroidPostNotificationsPermission = async () => {
   if (Platform.OS !== "android") return;
@@ -14,16 +15,18 @@ const requestAndroidPostNotificationsPermission = async () => {
   }
 };
 
-const getMessaging = (): null | (() => any) => {
+const getMessaging = async (): Promise<null | any> => {
   try {
-    // Metro still tries to resolve static `require("pkg")` even when wrapped.
-    // Using eval keeps it truly optional until the dependency is installed.
-    // eslint-disable-next-line no-eval
-    const req = eval("require") as any;
-    const mod = req("@react-native-firebase/messaging");
-    return (mod.default ?? mod) as () => any;
+    const mod: any = await import("@react-native-firebase/messaging");
+    console.log("push: imported module structure:", typeof mod, Object.keys(mod || {}));
+    const messaging = mod?.default?.default ?? mod?.default;
+    console.log("push: messaging type:", typeof messaging, "keys:", Object.keys(messaging || {}));
+    console.log("push: messaging.default type:", typeof messaging?.default, "keys:", Object.keys(messaging?.default || {}));
+    console.log("push: messaging.default.default type:", typeof messaging?.default?.default, "keys:", Object.keys(messaging?.default?.default || {}));
+    console.log("push: getToken exists:", typeof messaging?.default?.default?.getToken);
+    return mod?.default?.default ?? mod?.default ?? mod;
   } catch (e) {
-    console.log("push: require @react-native-firebase/messaging failed", e);
+    console.log("push: load @react-native-firebase/messaging failed", e);
     return null;
   }
 };
@@ -35,18 +38,29 @@ export const syncPushTopicForUser = async (userId: string | null) => {
   try {
     await requestAndroidPostNotificationsPermission();
 
-    const messaging = getMessaging();
+    const messaging = await getMessaging();
     if (!messaging) {
       console.log("push: messaging module not available");
       currentTopic = nextTopic;
       return;
     }
 
-    // Ensure device is registered and token is generated.
     try {
-      await messaging().getToken();
+      const token = await messaging().getToken();
+      console.log("push: FCM token", token);
     } catch (e) {
       console.log("push: getToken error", e);
+    }
+
+    if (!tokenRefreshListenerSet) {
+      tokenRefreshListenerSet = true;
+      try {
+        messaging().onTokenRefresh((token: string) => {
+          console.log("push: FCM token refreshed", token);
+        });
+      } catch (e) {
+        console.log("push: onTokenRefresh error", e);
+      }
     }
 
     if (currentTopic) {
