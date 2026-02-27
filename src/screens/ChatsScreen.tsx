@@ -3,7 +3,6 @@ import { View, StyleSheet, Text, ScrollView, TouchableOpacity, TextInput, Alert,
 import { supabase } from "../lib/supabase";
 import { useRoute, useFocusEffect } from "@react-navigation/native";
 import * as Linking from "expo-linking";
-import * as jsrsasign from 'jsrsasign';
 
 type Invitation = {
   id: string;
@@ -43,37 +42,7 @@ type SkillRow = {
   name: string;
 };
 
-const serviceAccount = {
-  "type": "service_account",
-  "project_id": "artel-a904d",
-  "private_key_id": "6308db7dc5cfabe6a0bffe46d0fae41d0d91b5d2",
-  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDRICAdnS3MAJo5\nRau9rMWJCDMkt+sJHF0BRZ9GHWO5F0DShw9QhQUxJ3um/0Dy15RICGGleX5sS9qc\n7s0xBkvt7qwVoUU1Co408Zg5vsGGVcZzPWr7ECTEkMdhj39ZkBuKOuU3VhNPTwqE\ndm5CXbQtsr9nx2gK/rLBqmFyTrIQ0rdNY0ZFX8IEEDxDDJ/de30alvJcZh3OlwzT\nLAHdvN7bvMxNd4TLwZGwIUbnZqlL8ZhTRg1fqGIn/x1tRzM5GrENbl9AhV8F+9f6\nyRToMh1JZhdJ2p7KoIin7Jy3jNrmoDu9aBdIxSgb95WuktjQLKxF7283FocsbjL7\naQ7xjWzfAgMBAAECggEAPYHY4Ezn+N3efmTO9+kWalDmlfCgKNxWQHcFOv6O45QC\nxUjjCLgvCD+IH1xo8mPUoYERkzVSKTEAOfMEl9w1vePaajw2Gj0iCVFbh/RigAu/\nZAqW6gPcBJJeigPGHYYEi5n569YdtNBXFBGvKUbdJSmzISdlowI5ejuOEKwztD11\nAWHd8SzKQj/oEKqy3pU1WMPHLT3eHSyhU5/5OWHaA7UFkfCvPFopzDldpl2X5tYa\nnzWoEl1bJI76kn1KT+ZKeEfCOaeN0eaVJMyT5CBl9Pdi38sDKzgbzVUKTr8cyEv2\nY63WyE7aY9kvj1X5gO33UVUAtGPnzRUWzPm+50K1ZQKBgQD79i5l6F4rS6rMMyFe\nvh+t0PkGkLQwAvZuCqogTPvMk6NZbxLEAfvagE6z3BBDsC3ntO8g94kcqB/EfQ6o\nI9t6lwVhOxMR/+a9Bl/cxnCaChRqztMZrIw+cN9xu3gI/ZJbNm7QQbuOyqHztpBj\nx6aKzfqe04TWCor0mOEywwM87QKBgQDUei8dYEv9isezUskssUHYmRUt9/J1AoPX\nDvx3vlV9Oht2uIMw6CQTa0DbEkDzdVDGkx0B6JddpUwIGL///MghIdOL6UDtvuWh\noiUXXw0PqDIFNZPLqeYqEaQBmNHDZTPnsMXi/7YO322WHXfv9TavvsDuTlngImaE\nBgVBWb3jewKBgF/fP65lKZfd1eKXPgZX36P61RbLbtSp++zJQAzEXjdsogZAvmo4\nuwVcNxY3ETVAT2dQMIFhzxlJW7UfRLlz02qlFlX17X622axpRYazN1tVpIkzo52s\nSzzjJBKZm8YH/m2Ym7fAm0ZtEgyzFePxrww37joLEAuFvXPuzBnNnGjNAoGBAJFu\nQ/tOYxTaPY/O9SVi+he/x9Bb6pcOLqEvf7ySCT+aWxvqdNkvuymTeqO3nb9FqBES\ntoMM6TXOovjTv+793RlYZsxXzfosdE4qhkq142G5FOud3VhEJObchi4VpFWiWmGW\nDAwwTDNn2EEsUGBsrY6i+Ljj5f5UbWimGki9nQwrAoGBAJWdmXjelCHZuX8LC54D\n0odTlnLIywGNO9O4wKYniH//EdWRU0UBRffVxCli9YJqqYpN7sApsp49dzkruTi9\nMUjPyK6aVmjkjYV1cB7F32CTcIuC0SLJFuO2gJ+ns5hrhDdbdbUQAPiY8zD1D9Av\nSUICYo29YJ8Omi3uOFCDzivN\n-----END PRIVATE KEY-----\n",
-  "client_email": "firebase-adminsdk-fbsvc@artel-a904d.iam.gserviceaccount.com",
-  "client_id": "115248192529514497547",
-  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-  "token_uri": "https://oauth2.googleapis.com/token",
-  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40artel-a904d.iam.gserviceaccount.com",
-  "universe_domain": "googleapis.com"
-};
 
-const generateJWT = async (): Promise<string> => {
-  const header = { alg: 'RS256', typ: 'JWT' };
-  const now = Math.floor(Date.now() / 1000);
-  const payload = {
-    iss: serviceAccount.client_email,
-    scope: 'https://www.googleapis.com/auth/cloud-platform',
-    aud: serviceAccount.token_uri,
-    exp: now + 3600,
-    iat: now
-  };
-
-  const sHeader = JSON.stringify(header);
-  const sPayload = JSON.stringify(payload);
-  const sJWT = jsrsasign.KJUR.jws.JWS.sign("RS256", sHeader, sPayload, serviceAccount.private_key);
-
-  return sJWT;
-};
 
 export default function ChatsScreen() {
   const route = useRoute<any>();
