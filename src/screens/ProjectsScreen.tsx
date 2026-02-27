@@ -146,7 +146,14 @@ export default function ProjectsScreen() {
       Alert.alert("Отклик", "Приглашение отправлено");
       setMyResponses((prev) => ({ ...prev, [p.id]: true }));
     } catch (e) {
-      Alert.alert("Ошибка", "Ошибка при отклике");
+      console.error("respondToProject error:", e);
+      const msg =
+        e && typeof e === "object" && "message" in e
+          ? String((e as any).message)
+          : e
+            ? String(e)
+            : "Ошибка при отклике";
+      Alert.alert("Ошибка", msg);
     }
   };
 

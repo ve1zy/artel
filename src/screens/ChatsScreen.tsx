@@ -3,6 +3,7 @@ import { View, StyleSheet, Text, ScrollView, TouchableOpacity, TextInput, Alert,
 import { supabase } from "../lib/supabase";
 import { useRoute, useFocusEffect } from "@react-navigation/native";
 import * as Linking from "expo-linking";
+import * as jsrsasign from 'jsrsasign';
 
 type Invitation = {
   id: string;
@@ -13,7 +14,7 @@ type Invitation = {
   from_user_name?: string;
   project_id?: string | null;
   project_title?: string | null;
-  role: string;
+  role?: string;
   from_user_bio?: string;
   from_user_skills: string[];
 };
@@ -40,6 +41,38 @@ type Message = {
 
 type SkillRow = {
   name: string;
+};
+
+const serviceAccount = {
+  "type": "service_account",
+  "project_id": "artel-a904d",
+  "private_key_id": "6308db7dc5cfabe6a0bffe46d0fae41d0d91b5d2",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDRICAdnS3MAJo5\nRau9rMWJCDMkt+sJHF0BRZ9GHWO5F0DShw9QhQUxJ3um/0Dy15RICGGleX5sS9qc\n7s0xBkvt7qwVoUU1Co408Zg5vsGGVcZzPWr7ECTEkMdhj39ZkBuKOuU3VhNPTwqE\ndm5CXbQtsr9nx2gK/rLBqmFyTrIQ0rdNY0ZFX8IEEDxDDJ/de30alvJcZh3OlwzT\nLAHdvN7bvMxNd4TLwZGwIUbnZqlL8ZhTRg1fqGIn/x1tRzM5GrENbl9AhV8F+9f6\nyRToMh1JZhdJ2p7KoIin7Jy3jNrmoDu9aBdIxSgb95WuktjQLKxF7283FocsbjL7\naQ7xjWzfAgMBAAECggEAPYHY4Ezn+N3efmTO9+kWalDmlfCgKNxWQHcFOv6O45QC\nxUjjCLgvCD+IH1xo8mPUoYERkzVSKTEAOfMEl9w1vePaajw2Gj0iCVFbh/RigAu/\nZAqW6gPcBJJeigPGHYYEi5n569YdtNBXFBGvKUbdJSmzISdlowI5ejuOEKwztD11\nAWHd8SzKQj/oEKqy3pU1WMPHLT3eHSyhU5/5OWHaA7UFkfCvPFopzDldpl2X5tYa\nnzWoEl1bJI76kn1KT+ZKeEfCOaeN0eaVJMyT5CBl9Pdi38sDKzgbzVUKTr8cyEv2\nY63WyE7aY9kvj1X5gO33UVUAtGPnzRUWzPm+50K1ZQKBgQD79i5l6F4rS6rMMyFe\nvh+t0PkGkLQwAvZuCqogTPvMk6NZbxLEAfvagE6z3BBDsC3ntO8g94kcqB/EfQ6o\nI9t6lwVhOxMR/+a9Bl/cxnCaChRqztMZrIw+cN9xu3gI/ZJbNm7QQbuOyqHztpBj\nx6aKzfqe04TWCor0mOEywwM87QKBgQDUei8dYEv9isezUskssUHYmRUt9/J1AoPX\nDvx3vlV9Oht2uIMw6CQTa0DbEkDzdVDGkx0B6JddpUwIGL///MghIdOL6UDtvuWh\noiUXXw0PqDIFNZPLqeYqEaQBmNHDZTPnsMXi/7YO322WHXfv9TavvsDuTlngImaE\nBgVBWb3jewKBgF/fP65lKZfd1eKXPgZX36P61RbLbtSp++zJQAzEXjdsogZAvmo4\nuwVcNxY3ETVAT2dQMIFhzxlJW7UfRLlz02qlFlX17X622axpRYazN1tVpIkzo52s\nSzzjJBKZm8YH/m2Ym7fAm0ZtEgyzFePxrww37joLEAuFvXPuzBnNnGjNAoGBAJFu\nQ/tOYxTaPY/O9SVi+he/x9Bb6pcOLqEvf7ySCT+aWxvqdNkvuymTeqO3nb9FqBES\ntoMM6TXOovjTv+793RlYZsxXzfosdE4qhkq142G5FOud3VhEJObchi4VpFWiWmGW\nDAwwTDNn2EEsUGBsrY6i+Ljj5f5UbWimGki9nQwrAoGBAJWdmXjelCHZuX8LC54D\n0odTlnLIywGNO9O4wKYniH//EdWRU0UBRffVxCli9YJqqYpN7sApsp49dzkruTi9\nMUjPyK6aVmjkjYV1cB7F32CTcIuC0SLJFuO2gJ+ns5hrhDdbdbUQAPiY8zD1D9Av\nSUICYo29YJ8Omi3uOFCDzivN\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@artel-a904d.iam.gserviceaccount.com",
+  "client_id": "115248192529514497547",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40artel-a904d.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+};
+
+const generateJWT = async (): Promise<string> => {
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const now = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: serviceAccount.client_email,
+    scope: 'https://www.googleapis.com/auth/cloud-platform',
+    aud: serviceAccount.token_uri,
+    exp: now + 3600,
+    iat: now
+  };
+
+  const sHeader = JSON.stringify(header);
+  const sPayload = JSON.stringify(payload);
+  const sJWT = jsrsasign.KJUR.jws.JWS.sign("RS256", sHeader, sPayload, serviceAccount.private_key);
+
+  return sJWT;
 };
 
 export default function ChatsScreen() {
@@ -261,7 +294,7 @@ export default function ChatsScreen() {
     console.log("loadInvitations: loading for userId:", userId);
     const { data, error } = await supabase
       .from("invitations")
-      .select("id, from_user, to_user, status, created_at, project_id, project_title, role")
+      .select("id, from_user, to_user, status, created_at, project_id, project_title")
       .eq("to_user", userId)
       .eq("status", "pending")
       .order("created_at", { ascending: false });
@@ -274,7 +307,7 @@ export default function ChatsScreen() {
           const [{ data: profile, error: profileError }, { data: skillsData, error: skillsError }] = await Promise.all([
             supabase
               .from("profiles")
-              .select("full_name, bio")
+              .select("full_name, bio, roles")
               .eq("id", i.from_user)
               .maybeSingle(),
             supabase
@@ -287,7 +320,17 @@ export default function ChatsScreen() {
           const skills = (skillsData || [])
             .map((row: any) => (row?.skills as any)?.name as string)
             .filter((v: string) => v && v.trim());
-          return { ...i, from_user_name: profile?.full_name, from_user_bio: bio, from_user_skills: skills };
+
+          const rolesArr = (profile as any)?.roles as string[] | null | undefined;
+          const rolesText = Array.isArray(rolesArr) && rolesArr.length ? rolesArr.map((r) => String(r).toUpperCase()).join(" · ") : "";
+
+          return {
+            ...i,
+            role: rolesText,
+            from_user_name: profile?.full_name,
+            from_user_bio: bio,
+            from_user_skills: skills,
+          };
         })
       );
       console.log("loadInvitations: final invitations:", invitationsWithNames);
@@ -343,12 +386,43 @@ export default function ChatsScreen() {
   const acceptInvitation = async (invId: string, fromUser: string) => {
     if (acceptingInvitations.has(invId)) return;
     setAcceptingInvitations(prev => new Set(prev).add(invId));
+
+    const { data: currentInv, error: checkError } = await supabase
+      .from('invitations')
+      .select('status')
+      .eq('id', invId)
+      .maybeSingle();
+    if (checkError) {
+      console.error('acceptInvitation checkError:', checkError);
+      Alert.alert('Ошибка', 'Не удалось проверить статус приглашения');
+      setAcceptingInvitations(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(invId);
+        return newSet;
+      });
+      return;
+    }
+    if (currentInv?.status !== 'pending') {
+      Alert.alert('Ошибка', 'Приглашение уже обработано');
+      setAcceptingInvitations(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(invId);
+        return newSet;
+      });
+      return;
+    }
+
     try {
       // Check if chat already exists
-      const { data: existingChat } = await supabase
+      const { data: existingChat, error: existingError } = await supabase
         .from('chats')
         .select('id')
         .contains('participants', [userId!, fromUser]);
+      if (existingError) {
+        console.error('acceptInvitation existingChat error:', existingError);
+        Alert.alert('Ошибка', 'Не удалось проверить существующие чаты');
+        return;
+      }
       if (existingChat && existingChat.length > 0) {
         Alert.alert('Ошибка', 'Чат уже существует');
         return;
@@ -361,16 +435,37 @@ export default function ChatsScreen() {
         .maybeSingle();
       if (invRowError) throw invRowError;
 
-      await supabase.from('invitations').update({ status: 'accepted' }).eq('id', invId);
-      await supabase.from('chats').insert({
+      const { error: updateError } = await supabase
+        .from('invitations')
+        .update({ status: 'accepted' })
+        .eq('id', invId);
+      if (updateError) {
+        console.error('acceptInvitation updateError:', updateError);
+        Alert.alert('Ошибка', updateError.message || 'Не удалось обновить приглашение');
+        return;
+      }
+
+      const { error: insertChatError } = await supabase.from('chats').insert({
         participants: [userId!, fromUser],
         project_id: (invRow as any)?.project_id ?? null,
         project_title: (invRow as any)?.project_title ?? null,
       });
+      if (insertChatError) {
+        console.error('acceptInvitation insertChatError:', insertChatError);
+        Alert.alert('Ошибка', insertChatError.message || 'Не удалось создать чат');
+        return;
+      }
       loadInvitations();
       loadChats();
     } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось принять приглашение');
+      console.error('acceptInvitation error:', error);
+      const msg =
+        error && typeof error === 'object' && 'message' in error
+          ? String((error as any).message)
+          : error
+            ? String(error)
+            : 'Не удалось принять приглашение';
+      Alert.alert('Ошибка', msg);
     } finally {
       setAcceptingInvitations(prev => {
         const newSet = new Set(prev);
@@ -582,7 +677,10 @@ export default function ChatsScreen() {
           <Text style={styles.sectionTitle}>Приглашения</Text>
           {invitations.map((inv) => (
             <View key={inv.id} style={styles.invitation}>
-              <Text style={styles.invitationText}>От {inv.from_user_name || 'Неизвестный'} · {inv.role}</Text>
+              <Text style={styles.invitationText}>
+                От {inv.from_user_name || 'Неизвестный'}
+                {inv.role ? ` · ${inv.role}` : ""}
+              </Text>
               {inv.project_title ? <Text style={styles.invitationSubText}>{inv.project_title}</Text> : null}
               {inv.from_user_bio ? <Text style={styles.invitationSubText}>{inv.from_user_bio}</Text> : null}
               {inv.from_user_skills.length > 0 ? <Text style={styles.invitationSubText}>Навыки: {inv.from_user_skills.join(', ')}</Text> : null}
